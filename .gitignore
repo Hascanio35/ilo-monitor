@@ -1,0 +1,20 @@
+# Configurazione locale: contiene password
+.env
+config/
+*.key
+
+# Dati e log
+logs/
+*.log
+backup-*/
+*.sql.gz
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Sistema
+.DS_Store
+Thumbs.db

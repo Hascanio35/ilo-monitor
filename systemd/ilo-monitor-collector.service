@@ -1,0 +1,15 @@
+[Unit]
+Description=Raccolta dati Redfish da tutti gli iLO configurati
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/ilo-monitor
+Environment=ILO_MONITOR_BASE=/opt/ilo-monitor
+EnvironmentFile=/opt/ilo-monitor/config/.env
+ExecStart=/opt/ilo-monitor/venv/bin/python -m app.redfish_collector
+TimeoutStartSec=900
+StandardOutput=append:/opt/ilo-monitor/logs/collector.log
+StandardError=append:/opt/ilo-monitor/logs/collector.log

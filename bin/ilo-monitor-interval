@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Cambia l'intervallo del timer di raccolta.
+# Uso: ilo-monitor-interval 10      (minuti)
+set -euo pipefail
+
+MINUTES="${1:-}"
+if ! [[ "$MINUTES" =~ ^[0-9]+$ ]] || [ "$MINUTES" -lt 1 ]; then
+    echo "Uso: ilo-monitor-interval <minuti>   (numero intero >= 1)" >&2
+    exit 1
+fi
+
+sed -i "s/^OnUnitActiveSec=.*/OnUnitActiveSec=${MINUTES}min/" \
+    /etc/systemd/system/ilo-monitor-collector.timer
+systemctl daemon-reload
+systemctl restart ilo-monitor-collector.timer
+echo "Intervallo di raccolta impostato a ${MINUTES} minuti."
+systemctl list-timers ilo-monitor-collector.timer --no-pager

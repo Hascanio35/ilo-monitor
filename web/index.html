@@ -1,0 +1,2950 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport"
+  content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b121b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="/icons/favicon-64.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="iLO Monitor">
+<meta name="application-name" content="iLO Monitor">
+<title>iLO Monitor</title>
+<style>
+:root{
+ --bg:#0b121b;--panel:#12202c;--panel2:#152532;--line:#263b4b;
+ --text:#edf4f8;--muted:#91a5b7;--green:#19e6a1;--green2:#09ae7c;
+ --blue:#45a8ff;--amber:#ffbd3d;--red:#ff5b67;--purple:#a77cff;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;max-width:100%;overflow-x:hidden;background:var(--bg);color:var(--text);
+ font-family:Inter,"Segoe UI",Arial,sans-serif;
+ -webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{-webkit-tap-highlight-color:rgba(25,230,161,.15)}
+body{font-size:13px}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+a{color:var(--blue)}
+:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.app{display:flex;min-height:100vh}
+
+/* ---------- sidebar ---------- */
+.sidebar{width:195px;flex:0 0 195px;background:#0d1722;border-right:1px solid #1d3040;
+ position:fixed;inset:0 auto 0 0;z-index:10}
+.logo{height:76px;padding:15px 18px;border-bottom:1px solid #1d3040;display:flex;
+ align-items:center;gap:12px}
+.logoMark{width:35px;height:15px;border:2px solid var(--green);
+ box-shadow:0 0 9px rgba(25,230,161,.25)}
+.logoText{line-height:12px;font-weight:800;font-size:12px;letter-spacing:-.3px}
+.logoText span{display:block}
+.nav{padding:17px 0}
+.nav button{width:100%;border:0;background:transparent;color:#b8c6d2;text-align:left;
+ padding:12px 18px;display:flex;gap:14px;align-items:center;border-left:3px solid transparent}
+.nav button:hover{background:#12222e;color:#fff}
+.nav button.active{background:linear-gradient(90deg,rgba(25,230,161,.16),rgba(25,230,161,.05));
+ color:var(--green);border-left-color:var(--green)}
+.navIcon{width:19px;text-align:center;font-size:16px}
+.version{position:absolute;left:18px;bottom:18px;color:#718596;font-size:11px;line-height:16px}
+
+/* ---------- header ---------- */
+.content{margin-left:195px;width:calc(100% - 195px);min-width:0}
+.header{height:76px;border-bottom:1px solid #1d3040;background:#0e1823;display:flex;
+ align-items:center;justify-content:space-between;padding:0 17px 0 20px;position:relative}
+.headLeft h1{font-size:22px;margin:0 0 2px;letter-spacing:.1px}
+.headLeft p{margin:0;color:var(--muted);font-size:12px}
+.headRight{display:flex;align-items:center;gap:18px}
+.searchWrap{position:relative}
+.searchWrap:before{content:"⌕";position:absolute;left:13px;top:5px;font-size:23px;color:#b7c5d0}
+.search{width:265px;height:38px;border:1px solid #2b4052;background:#101d29;border-radius:7px;
+ color:#fff;padding:0 12px 0 38px;outline:none}
+.bell{font-size:21px;color:var(--green);position:relative;background:none;border:0;padding:0}
+.bell b{position:absolute;right:-9px;top:-8px;background:#f04c5b;color:#fff;border-radius:20px;
+ font-size:10px;padding:3px 6px;font-weight:700}
+.bell b.zero{display:none}
+.user{display:flex;align-items:center;gap:9px}
+.avatar{width:27px;height:27px;border-radius:50%;background:#718298;display:grid;
+ place-items:center;color:#dfe7ee;font-weight:700}
+.user span{font-size:12px}
+.refresh{border:1px solid #2a4051;background:#13202c;color:#dce7ed;border-radius:7px;padding:8px 12px}
+.refresh:hover{border-color:#466277}
+.refresh.busy{opacity:.55;pointer-events:none}
+.timer{position:absolute;right:18px;top:56px;font-size:10px;color:#90a5b7;background:#111f2b;
+ border:1px solid #263a4a;border-radius:12px;padding:5px 10px}
+main{padding:18px 14px 40px}
+
+/* ---------- kpi ---------- */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:16px}
+.kpi{min-width:0;min-height:114px;border:1px solid var(--line);border-radius:9px;padding:14px 16px;
+ background:var(--panel);position:relative;overflow:hidden}
+.kpi:after{content:"";position:absolute;inset:auto -30px -50px auto;width:120px;height:120px;
+ border-radius:50%;background:rgba(25,230,161,.035)}
+.kpi.green{background:linear-gradient(120deg,rgba(25,230,161,.11),var(--panel) 70%)}
+.kpi.blue{background:linear-gradient(120deg,rgba(69,168,255,.11),var(--panel) 70%)}
+.kpi.purple{background:linear-gradient(120deg,rgba(167,124,255,.13),var(--panel) 70%)}
+.kpiTop{display:flex;align-items:center;gap:13px}
+.kpiIcon{width:54px;height:54px;border-radius:8px;background:rgba(25,230,161,.12);display:grid;
+ place-items:center;font-size:28px;color:var(--green);flex:0 0 54px}
+.blue .kpiIcon{background:rgba(69,168,255,.12);color:var(--blue)}
+.purple .kpiIcon{background:rgba(167,124,255,.14);color:var(--purple)}
+.kpiValue{font-size:25px;font-weight:800;line-height:27px}
+.kpiLabel{font-size:13px;color:#d9e4ea;margin-top:3px}
+.kpiSub{margin-top:10px;color:var(--muted);font-size:11px}
+.sep{opacity:.45;margin:0 5px}
+.oktxt{color:var(--green)}.warntxt{color:var(--amber)}.redtxt{color:var(--red)}
+.infotxt{color:var(--blue)}
+
+/* ---------- layout ---------- */
+.workspace{display:grid;grid-template-columns:minmax(560px,34%) minmax(0,1fr);
+ gap:14px;align-items:start}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.panelHead{min-height:53px;border-bottom:1px solid var(--line);padding:8px 14px;display:flex;
+ align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.panelHead h2{font-size:16px;margin:0}
+.add{background:var(--green2);color:#fff;border:0;border-radius:7px;padding:9px 13px;font-weight:600}
+.add:hover{background:#0ac68d}
+
+/* ---------- tabelle ---------- */
+.dataTable{width:100%;border-collapse:collapse}
+.dataTable th,.dataTable td{padding:10px 12px;border-bottom:1px solid var(--line);
+ text-align:left;font-size:11.5px;vertical-align:middle}
+.dataTable th{font-size:10px;color:#8ea5b8;font-weight:500;white-space:nowrap;
+ position:sticky;top:0;background:var(--panel);z-index:1}
+.dataTable tbody tr:last-child td{border-bottom:0}
+.serverList .dataTable{table-layout:fixed}
+.serverList .scrollY{overflow-x:hidden}
+.serverList th,.serverList td{padding:10px 8px}
+.serverList th:nth-child(1){width:27%}.serverList th:nth-child(2){width:19%}
+.serverList th:nth-child(3){width:15%}.serverList th:nth-child(4){width:10%}
+.serverList th:nth-child(5){width:11%}.serverList th:nth-child(6){width:18%}
+.serverList td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.serverList td:nth-child(4),.serverList td:nth-child(5){text-align:right}
+.serverList th:nth-child(4),.serverList th:nth-child(5){text-align:right}
+.rowActions{text-align:right;overflow:visible!important}
+.iconBtn{background:#1b2b39;border:1px solid #304657;color:#cfdce6;
+ border-radius:5px;width:26px;height:24px;font-size:12px;line-height:1;
+ padding:0;margin-left:3px}
+.iconBtn:hover{border-color:var(--green);color:var(--green)}
+.iconBtn:disabled{opacity:.3;cursor:not-allowed}
+.iconBtn:disabled:hover{border-color:#304657;color:#cfdce6}
+.serverRow{cursor:pointer}
+.serverRow:hover{background:rgba(25,230,161,.07)}
+.serverRow.selected{background:rgba(25,230,161,.09);outline:1px solid var(--green);outline-offset:-1px}
+.serverName{font-weight:700;font-size:11px}
+.ip{color:#7790a4;font-size:10px;margin-top:2px}
+.state{display:inline-flex;align-items:center;gap:5px}
+.stateDot{width:8px;height:8px;border-radius:50%;background:var(--green);flex:0 0 8px}
+.stateDot.warn{background:var(--amber)}.stateDot.bad{background:var(--red)}
+.stateDot.off{background:#6b8095}
+.scrollY{max-height:420px;overflow:auto}
+.eventsPanel{margin-top:14px}
+.sevWarn{color:var(--amber)}.sevInfo{color:var(--blue)}.sevBad{color:var(--red)}
+.nowrap{white-space:nowrap}
+
+/* ---------- dettaglio ---------- */
+.detail{min-width:0}
+.detailHead{padding:13px 14px;border-bottom:1px solid var(--line);display:flex;
+ align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.detailTitle{display:flex;gap:13px;align-items:center;min-width:0}
+.serverGlyph{font-size:28px;color:#d7e4ed}
+.detailName{font-size:21px;font-weight:800;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.detailMeta{color:#a0b1c0;margin-top:5px;font-size:11px}
+.badge{display:inline-block;border-radius:5px;padding:4px 8px;font-weight:700;font-size:11px}
+.badge.ok{background:rgba(25,230,161,.16);color:var(--green)}
+.badge.warn{background:#f5ad20;color:#16120a}
+.badge.bad{background:var(--red);color:#fff}
+.badge.off{background:#2b3d4c;color:#a8bccd}
+.actions{display:flex;gap:8px;position:relative}
+.action{background:#1b2b39;color:#e5edf2;border:1px solid #304657;border-radius:6px;padding:8px 11px}
+.action:hover{border-color:#466277}
+.action.green{background:var(--green2);border-color:var(--green2);color:#fff}
+.action.green:hover{background:#0ac68d}
+.action.danger{color:#ff8a92;border-color:#4a2b31}
+.action.danger:hover{background:#31191d}
+.menu{position:absolute;right:0;top:42px;background:#16253244;background:#162532;
+ border:1px solid #31485a;border-radius:8px;min-width:220px;z-index:60;padding:6px;
+ box-shadow:0 14px 40px rgba(0,0,0,.5)}
+.menu button{display:block;width:100%;text-align:left;background:none;border:0;color:#dbe6ee;
+ padding:9px 11px;border-radius:6px;font-size:12px}
+.menu button:hover{background:#1e3040}
+.menu button.danger{color:#ff8a92}
+.menu hr{border:0;border-top:1px solid #2a3f50;margin:5px 2px}
+.tabs{min-height:45px;border-bottom:1px solid var(--line);display:flex;padding-left:10px;overflow-x:auto}
+.tabs button{border:0;background:none;color:#a8b8c5;padding:12px 17px;white-space:nowrap;
+ border-bottom:3px solid transparent}
+.tabs button:hover{color:#fff}
+.tabs button.active{color:var(--green);border-bottom-color:var(--green)}
+.detailBody{padding:13px}
+.miniGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;margin-bottom:13px}
+.mini{min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px;min-height:84px}
+.miniTitle{font-size:11px;color:#b9c8d3}
+.miniValue{font-size:20px;font-weight:800;margin-top:8px;line-height:24px}
+.miniSub{font-size:10px;color:var(--muted);margin-top:4px}
+.detailGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.box{background:var(--panel2);border:1px solid var(--line);border-radius:8px;overflow:hidden;min-width:0}
+.boxHead{min-height:45px;border-bottom:1px solid var(--line);display:flex;align-items:center;
+ justify-content:space-between;padding:10px 12px;font-size:13px;font-weight:700;gap:8px}
+.boxLink{color:var(--blue);font-size:10px;font-weight:500;background:none;border:0;padding:0}
+.boxLink:hover{text-decoration:underline}
+.boxBody{padding:8px 12px}
+.boxBody.flush{padding:0}
+.line{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;
+ border-bottom:1px solid var(--line);font-size:11px}
+.line:last-child{border-bottom:0}
+.line .val{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.bar{height:9px;width:105px;border-radius:5px;background:#293a49;overflow:hidden;flex:0 0 105px}
+.bar i{display:block;height:100%;border-radius:5px;background:var(--green)}
+.bar i.warn{background:var(--amber)}.bar i.bad{background:var(--red)}
+.tempVal{font-weight:700;color:var(--green)}
+.tempVal.warn{color:var(--amber)}.tempVal.bad{color:var(--red)}
+.statusOk{color:var(--green)}.statusWarn{color:var(--amber)}.statusBad{color:var(--red)}
+.infoTable{width:100%;border-collapse:collapse}
+.infoTable td{padding:7px 0;border-bottom:1px solid var(--line);font-size:11px}
+.infoTable tr:last-child td{border-bottom:0}
+.infoTable td:first-child{color:#9fb0be}
+.infoTable td:last-child{text-align:right;word-break:break-word}
+.thermalStrip{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:7px}
+.thermalItem{min-height:51px;background:#172633;border:1px solid #2a4050;border-radius:6px;
+ padding:6px 9px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.thermalItem small{display:block;color:#8fa4b5;font-size:9px;white-space:nowrap;overflow:hidden;
+ text-overflow:ellipsis;max-width:95px}
+.thermalItem strong{font-size:15px;color:var(--green)}
+.thermalItem strong.warn{color:var(--amber)}.thermalItem strong.bad{color:var(--red)}
+.fullPanel{margin-top:12px}
+.empty{padding:26px 14px;text-align:center;color:#8fa4b5;font-size:12px}
+.empty b{display:block;color:#c3d2dd;font-size:13px;margin-bottom:5px}
+
+/* ---------- pagine ---------- */
+.pageToolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;
+ margin-bottom:12px;flex-wrap:wrap}
+.pageToolbar h2{margin:0;font-size:17px}
+.pageToolbar .sub{color:var(--muted);font-size:11px;margin-top:3px}
+.toolbarControls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.field{background:#101d29;border:1px solid #2b4052;color:#fff;border-radius:6px;
+ padding:8px 10px;outline:none}
+.field:focus{border-color:var(--green)}
+input.field::placeholder{color:#6f8598}
+.chart{width:100%;height:160px;display:block}
+.chartLegend{display:flex;gap:14px;flex-wrap:wrap;font-size:10px;color:var(--muted);
+ padding:4px 0 2px}
+.chartLegend i{display:inline-block;width:9px;height:3px;border-radius:2px;margin-right:5px;
+ vertical-align:middle}
+.heatGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px}
+.heatCell{border-radius:6px;padding:8px 7px;min-height:58px;display:flex;flex-direction:column;
+ justify-content:space-between;border:1px solid rgba(255,255,255,.06)}
+.heatCell small{font-size:9px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.heatCell b{font-size:14px}
+
+/* ---------- elenco server a schede (telefono) ---------- */
+.serverCards{display:none;padding:9px}
+.srvCard{background:var(--panel2);border:1px solid var(--line);
+ border-radius:9px;padding:11px 12px;margin-bottom:9px}
+.srvCard:last-child{margin-bottom:0}
+.srvCard.selected{border-color:var(--green);
+ box-shadow:0 0 0 1px rgba(25,230,161,.35)}
+.srvTop{display:flex;justify-content:space-between;align-items:flex-start;
+ gap:10px}
+.srvTop .serverName{font-size:14px}
+.srvMeta{color:#7f95a8;font-size:10.5px;margin-top:3px}
+.srvStats{display:flex;gap:14px;margin-top:10px;font-size:11px;
+ color:#c3d2dd;flex-wrap:wrap}
+.srvStats b{font-size:14px;display:block;font-weight:700;margin-top:1px}
+.srvStats span small{color:#7f95a8;font-size:9.5px;
+ text-transform:uppercase;letter-spacing:.4px}
+.srvCardActions{display:flex;gap:7px;margin-top:11px}
+.srvCardActions button{flex:1;min-height:40px;background:#1b2b39;
+ border:1px solid #304657;color:#dce7ed;border-radius:7px;font-size:12px}
+.srvCardActions button:hover{border-color:var(--green)}
+.srvCardActions button:disabled{opacity:.35}
+
+/* ---------- regole di avviso ---------- */
+.alertRule{border-bottom:1px solid var(--line);padding:13px 14px}
+.alertRule:last-child{border-bottom:0}
+.alertHead{display:flex;justify-content:space-between;align-items:center;
+ gap:12px;margin-bottom:11px;flex-wrap:wrap}
+.alertBody{display:grid;grid-template-columns:200px minmax(0,1fr) minmax(0,1fr);gap:16px;
+ align-items:start}
+.alertLabel{font-size:10px;color:#8ea5b8;margin-bottom:7px}
+.checkGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+ gap:6px 12px}
+.checkItem{display:flex;align-items:center;gap:7px;font-size:11.5px;
+ color:#cfdce6;cursor:pointer}
+.checkItem input{margin:0;width:auto;accent-color:var(--green)}
+.alertFoot{display:flex;justify-content:space-between;align-items:center;
+ gap:12px;margin-top:12px;flex-wrap:wrap}
+.alertFoot .hint{margin:0}
+@media(max-width:900px){.alertBody{grid-template-columns:minmax(0,1fr)}}
+
+/* ---------- modali ---------- */
+.modal{position:fixed;inset:0;background:rgba(3,9,15,.72);display:grid;place-items:center;
+ z-index:100;padding:20px}
+.modalCard{width:min(660px,96vw);max-height:92vh;overflow:auto;background:var(--panel);
+ border:1px solid #314858;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.modalHead{padding:17px 19px;border-bottom:1px solid var(--line);display:flex;
+ justify-content:space-between;align-items:flex-start;gap:12px}
+.modalHead h2{margin:0;font-size:18px}
+.modalHead p{margin:5px 0 0;color:var(--muted);font-size:11px}
+.modalClose{border:0;background:none;color:#aab9c5;font-size:25px;line-height:20px}
+.formGrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:13px;padding:18px 19px}
+.formGrid label{font-size:11px;color:#aebdca;display:block}
+.formGrid .wide{grid-column:1/-1}
+.formGrid input,.formGrid textarea,.formGrid select{display:block;width:100%;margin-top:6px;
+ border:1px solid #304657;background:#0f1b26;color:#fff;border-radius:6px;padding:9px 10px;outline:none}
+.formGrid input{height:38px}
+.formGrid textarea{min-height:64px;resize:vertical}
+.formGrid input:focus,.formGrid textarea:focus{border-color:var(--green)}
+.hint{color:#7a8fa1;font-size:10px;margin-top:5px}
+.formMessage{min-height:18px;padding:0 19px;font-size:11px;color:var(--amber);
+ line-height:17px}
+.formMessage b{font-size:12px}
+.formMessage.ok{color:var(--green)}
+.formMessage.err{color:var(--red)}
+.modalActions{display:flex;justify-content:flex-end;gap:8px;padding:14px 19px;
+ border-top:1px solid var(--line);margin-top:10px;flex-wrap:wrap}
+.modalActions .left{margin-right:auto}
+.switch{display:flex;align-items:center;gap:9px;font-size:11px;color:#aebdca;margin-top:6px}
+.switch input{width:auto;height:auto;margin:0}
+
+/* ---------- toast ---------- */
+.toasts{position:fixed;right:18px;bottom:18px;z-index:200;display:flex;flex-direction:column;
+ gap:8px;max-width:340px}
+.toast{background:#16252f;border:1px solid #31485a;border-left:3px solid var(--green);
+ border-radius:8px;padding:11px 13px;font-size:12px;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+.toast.err{border-left-color:var(--red)}
+.toast.warn{border-left-color:var(--amber)}
+.hidden{display:none!important}
+.spin{display:inline-block;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+
+@media(max-width:1250px){
+ .workspace{grid-template-columns:minmax(440px,40%) minmax(0,1fr)}
+ .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .detailGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* ============================================================
+   Telefono: sotto gli 820px l'impaginazione cambia impostazione,
+   non si limita a restringersi. La barra laterale diventa una
+   barra in basso raggiungibile col pollice, l'elenco server
+   passa da tabella a schede, e i menu salgono dal basso.
+   ============================================================ */
+@media(max-width:820px){
+ .sidebar{width:auto;inset:auto 0 0 0;height:auto;border-right:0;
+  border-top:1px solid #1d3040;background:#0d1722;
+  padding-bottom:env(safe-area-inset-bottom)}
+ .logo,.version{display:none}
+ .nav{padding:0;display:flex}
+ .nav button{flex:1;flex-direction:column;gap:3px;padding:9px 2px 8px;
+  border-left:0;border-top:3px solid transparent;min-height:56px;
+  align-items:center;justify-content:center;text-align:center}
+ .nav button.active{border-left-color:transparent;border-top-color:var(--green);
+  background:linear-gradient(180deg,rgba(25,230,161,.16),transparent)}
+ .navIcon{font-size:17px}
+ .navText{font-size:9px;line-height:10px;letter-spacing:-.2px}
+
+ .content{margin-left:0;width:100%}
+ main{padding:11px 10px calc(76px + env(safe-area-inset-bottom))}
+
+ .header{height:auto;min-height:0;flex-wrap:wrap;gap:9px;padding:11px 12px;
+  position:sticky;top:0;z-index:20}
+ .headLeft{flex:1 1 auto;min-width:0}
+ .headLeft h1{font-size:17px}
+ .headLeft p{display:none}
+ .headRight{gap:11px}
+ .searchWrap{flex:1 1 100%;order:3}
+ .search{width:100%;height:42px}
+ .timer{display:none}
+ .user span{display:none}
+ .refresh{min-width:42px;height:42px}
+
+ .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:11px}
+ .kpi{min-height:0;padding:11px}
+ .kpiIcon{width:38px;height:38px;flex:0 0 38px;font-size:20px}
+ .kpiValue{font-size:19px;line-height:21px}
+ .kpiLabel{font-size:11px}
+ .kpiSub{font-size:10px;margin-top:7px}
+
+ .workspace{grid-template-columns:minmax(0,1fr);gap:11px}
+ .serverList{order:1}.detail{order:2}.eventsPanel{order:3}
+ .detailGrid,.grid2{grid-template-columns:minmax(0,1fr)}
+ .miniGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ .formGrid{grid-template-columns:minmax(0,1fr)}
+
+ /* L'elenco a tabella cede il posto alle schede. */
+ .serverTable{display:none}
+ .serverCards{display:block}
+ .scrollY{max-height:none}
+
+ .tabs{padding-left:0}
+ .tabs button{padding:13px 14px;font-size:12px}
+ .detailBody{padding:10px}
+ .detailHead{padding:11px 12px}
+ .detailName{font-size:18px}
+ .actions{width:100%}
+ .actions .action{flex:1;min-height:42px}
+
+ /* I bersagli piccoli diventano toccabili. */
+ .iconBtn{width:38px;height:36px;font-size:14px;margin-left:5px}
+ .action,.add,.field,.boxLink{min-height:38px}
+ .boxLink{min-height:0;padding:6px 0}
+ .checkItem{padding:5px 0}
+ .checkItem input{width:18px;height:18px}
+
+ /* Le tabelle che restano scorrono da sole invece di schiacciarsi. */
+ .boxBody.flush{overflow-x:auto}
+ .boxBody.flush .dataTable{min-width:520px}
+
+ /* I menu diventano pannelli che salgono dal basso. */
+ .menu{position:fixed!important;inset:auto 0 0 0!important;
+  border-radius:14px 14px 0 0;border-left:0;border-right:0;border-bottom:0;
+  padding:8px 8px calc(12px + env(safe-area-inset-bottom));
+  max-height:72vh;overflow:auto}
+ .menu button{padding:14px 13px;font-size:13.5px}
+ .menu:before{content:"";display:block;width:38px;height:4px;border-radius:2px;
+  background:#3a5062;margin:4px auto 10px}
+
+ .modal{padding:0;place-items:end stretch}
+ .modalCard{width:100%;max-height:92vh;border-radius:14px 14px 0 0;
+  padding-bottom:env(safe-area-inset-bottom)}
+ .modalActions{position:sticky;bottom:0;background:var(--panel)}
+ .modalActions button{flex:1;min-height:44px}
+ .modalActions .left{flex-basis:100%;margin-right:0}
+
+ .pageToolbar{gap:9px}
+ .toolbarControls{width:100%}
+ .toolbarControls .field{flex:1 1 140px}
+
+ /* Sotto i 16px iOS ingrandisce la pagina quando si tocca un campo,
+    e poi resta ingrandita: meglio alzare il corpo del testo. */
+ input,select,textarea,.field,.search{font-size:16px}
+ .alertBody{grid-template-columns:minmax(0,1fr)}
+}
+
+@media(max-width:420px){
+ .kpis{grid-template-columns:minmax(0,1fr)}
+ .miniGrid{grid-template-columns:minmax(0,1fr)}
+ .navText{display:none}
+ .nav button{min-height:50px}
+}
+
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logoMark"></div>
+    <div class="logoText"><span>Hewlett Packard</span><span>Enterprise</span></div>
+  </div>
+  <nav class="nav" id="nav">
+    <button data-page="overview"><span class="navIcon">▣</span><span class="navText">Panoramica</span></button>
+    <button data-page="servers"><span class="navIcon">▤</span><span class="navText">Server</span></button>
+    <button data-page="thermal"><span class="navIcon">♨</span><span class="navText">Mappe termiche</span></button>
+    <button data-page="events"><span class="navIcon">⚑</span><span class="navText">Eventi</span></button>
+    <button data-page="reports"><span class="navIcon">◱</span><span class="navText">Report</span></button>
+    <button data-page="alerts"><span class="navIcon">✉</span><span class="navText">Avvisi email</span></button>
+    <button data-page="settings"><span class="navIcon">⚙</span><span class="navText">Impostazioni</span></button>
+  </nav>
+  <div class="version">HPE iLO Monitor<br>v2.0.0</div>
+</aside>
+
+<div class="content">
+<header class="header">
+  <div class="headLeft">
+    <h1 id="pageTitle">iLO Monitor</h1>
+    <p id="pageSubtitle">Monitoraggio centralizzato server HPE</p>
+  </div>
+  <div class="headRight">
+    <div class="searchWrap">
+      <input id="search" class="search" placeholder="Cerca server..." autocomplete="off">
+    </div>
+    <button class="bell" id="bell" title="Eventi delle ultime 24 ore">⚑<b id="bellCount" class="zero">0</b></button>
+    <div class="user"><div class="avatar">●</div>
+      <span id="userName">…</span></div>
+    <button class="refresh" id="logoutBtn" title="Esci">⎋</button>
+    <button class="refresh" id="refreshBtn" title="Aggiorna ora">⟳</button>
+  </div>
+  <div class="timer">Aggiornamento tra <span id="countdown">45</span> s</div>
+</header>
+
+<main id="pageRoot"></main>
+</div>
+</div>
+
+<div id="modalRoot"></div>
+<div class="toasts" id="toasts"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   Stato e utilità
+   ============================================================ */
+
+const state = {
+  page: "overview",
+  servers: [],
+  summary: {},
+  selectedId: null,
+  detail: null,
+  tab: "overview",
+  query: "",
+  settings: {tempWarn: 55, tempCrit: 70, refresh: 45},
+  countdown: 45,
+  loading: false,
+  eventFilters: {severity: "all", hours: 168, q: "", server_id: "",
+                 source: "all"},
+  reportHours: 24
+};
+
+const $ = (id) => document.getElementById(id);
+const el = (sel, root) => (root || document).querySelector(sel);
+const els = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+
+function esc(v){
+  return String(v ?? "").replace(/[&<>"']/g, (m) => (
+    {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]
+  ));
+}
+function num(v){ const x = Number(v); return Number.isFinite(x) ? x : null; }
+function fmt(v, suffix){
+  const x = num(v);
+  if (x === null) return "—";
+  const rounded = Math.round(x * 10) / 10;
+  return rounded + (suffix || "");
+}
+function fmtInt(v, suffix){
+  const x = num(v);
+  return x === null ? "—" : Math.round(x) + (suffix || "");
+}
+function health(v){
+  const x = String(v || "").toLowerCase();
+  if (!x) return "unknown";
+  if (x.includes("critical") || x.includes("fail") || x.includes("fatal")) return "bad";
+  if (x.includes("warn")) return "warn";
+  if (x.includes("ok") || x.includes("enabled")) return "ok";
+  return "warn";
+}
+function tempClass(v){
+  const x = num(v);
+  if (x === null) return "";
+  if (x >= state.settings.tempCrit) return "bad";
+  if (x >= state.settings.tempWarn) return "warn";
+  return "";
+}
+function dateLabel(v){
+  if (!v) return "—";
+  const d = new Date(String(v).replace(" ", "T") + (String(v).endsWith("Z") ? "" : "Z"));
+  if (isNaN(d)) return esc(v);
+  return d.toLocaleString("it-IT", {day:"2-digit", month:"2-digit", year:"numeric",
+    hour:"2-digit", minute:"2-digit"});
+}
+function relative(v){
+  if (!v) return "mai";
+  const d = new Date(String(v).replace(" ", "T") + (String(v).endsWith("Z") ? "" : "Z"));
+  if (isNaN(d)) return "—";
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (s < 60) return "adesso";
+  if (s < 3600) return Math.floor(s / 60) + " min fa";
+  if (s < 86400) return Math.floor(s / 3600) + " ore fa";
+  return Math.floor(s / 86400) + " giorni fa";
+}
+function uptimeFrom(v){
+  if (!v) return null;
+  const d = new Date(String(v).replace(" ", "T") + "Z");
+  if (isNaN(d)) return null;
+  const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+  const hours = Math.floor(((Date.now() - d.getTime()) % 86400000) / 3600000);
+  return {days, hours, since: d};
+}
+function tb(bytes){
+  const x = num(bytes);
+  if (x === null) return "—";
+  if (x >= 1e12) return (Math.round(x / 1e12 * 10) / 10) + " TB";
+  return (Math.round(x / 1e9)) + " GB";
+}
+// La console remota HTML5 sta all'indirizzo /irc.html dell'iLO e si
+// apre senza passare dalla sua interfaccia. Chiede comunque le
+// credenziali: l'autenticazione passa da un cookie dell'origine
+// dell'iLO, che una pagina servita da qui non puo' scrivere. Farle
+// riempire al gestore password del browser e' la strada pratica.
+function consoleUrl(server){
+  return "https://" + server.ilo_ip + "/irc.html";
+}
+function hasConsole(server){
+  const lic = String(server.ilo_license || "").toLowerCase();
+  // In mancanza del dato non blocchiamo: meglio un pulsante che
+  // forse non funziona di una funzione tolta per un campo vuoto.
+  if (!lic) return true;
+  return !lic.includes("standard");
+}
+function openConsole(server){
+  window.open(consoleUrl(server), "_blank", "noopener");
+}
+
+// Nell'elenco compatto "HPE ProLiant DL360 Gen10" diventa
+// "DL360 Gen10": il prefisso e' uguale per tutti e ruba spazio.
+function shortModel(v){
+  return String(v || "").replace(/^\s*(HPE|HP)?\s*ProLiant\s*/i, "").trim();
+}
+
+function severityClass(s){
+  const x = String(s || "").toUpperCase();
+  if (x === "CRITICAL" || x === "FATAL") return "sevBad";
+  if (x === "WARNING") return "sevWarn";
+  return "sevInfo";
+}
+function severityIcon(s){
+  const x = String(s || "").toUpperCase();
+  if (x === "CRITICAL" || x === "FATAL") return "⛔";
+  if (x === "WARNING") return "⚠";
+  return "ⓘ";
+}
+
+function toast(message, kind){
+  const node = document.createElement("div");
+  node.className = "toast" + (kind ? " " + kind : "");
+  node.textContent = message;
+  $("toasts").appendChild(node);
+  setTimeout(() => node.remove(), 5200);
+}
+
+// Oltre questo tempo la richiesta viene annullata: meglio un errore
+// leggibile di una rotellina che gira per sempre.
+const TIMEOUT_RICHIESTA = 30000;
+
+/* ------------------------------------------------------------
+   Aggiornamento senza ridisegno
+   ------------------------------------------------------------
+   Riscrivere innerHTML rifa' l'intero albero: la pagina sfarfalla,
+   l'elenco torna in cima e si perde quello che si stava facendo.
+   Qui confrontiamo il nuovo albero con quello presente e tocchiamo
+   solo cio' che e' davvero cambiato.
+   ------------------------------------------------------------ */
+
+function aggiornaAttributi(vecchio, nuovo){
+  // Un campo mentre lo si sta usando non si tocca.
+  const inUso = document.activeElement === vecchio;
+  for (const a of Array.from(nuovo.attributes)){
+    if (inUso && (a.name === "value" || a.name === "checked")) continue;
+    if (vecchio.getAttribute(a.name) !== a.value){
+      vecchio.setAttribute(a.name, a.value);
+    }
+  }
+  for (const a of Array.from(vecchio.attributes)){
+    // I marcatori nostri non arrivano dall'HTML generato.
+    if (a.name === "data-collegato") continue;
+    if (!nuovo.hasAttribute(a.name)) vecchio.removeAttribute(a.name);
+  }
+}
+
+function patch(vecchio, nuovo){
+  if (vecchio.nodeType === 3 && nuovo.nodeType === 3){
+    if (vecchio.nodeValue !== nuovo.nodeValue) vecchio.nodeValue = nuovo.nodeValue;
+    return vecchio;
+  }
+  if (vecchio.nodeType !== nuovo.nodeType
+      || vecchio.nodeName !== nuovo.nodeName){
+    vecchio.replaceWith(nuovo);
+    return nuovo;
+  }
+  if (vecchio.nodeType !== 1) return vecchio;
+
+  aggiornaAttributi(vecchio, nuovo);
+
+  // Il contenuto dei campi di testo vive nella proprieta', non
+  // nell'attributo: lo lasciamo stare se l'utente ci sta scrivendo.
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(vecchio.nodeName)){
+    if (document.activeElement !== vecchio
+        && nuovo.value !== undefined && vecchio.value !== nuovo.value){
+      vecchio.value = nuovo.value;
+    }
+    return vecchio;
+  }
+
+  const figliVecchi = Array.from(vecchio.childNodes);
+  const figliNuovi = Array.from(nuovo.childNodes);
+  const comuni = Math.min(figliVecchi.length, figliNuovi.length);
+  for (let i = 0; i < comuni; i++) patch(figliVecchi[i], figliNuovi[i]);
+  for (let i = comuni; i < figliNuovi.length; i++){
+    vecchio.appendChild(figliNuovi[i]);
+  }
+  for (let i = figliVecchi.length - 1; i >= comuni; i--){
+    figliVecchi[i].remove();
+  }
+  return vecchio;
+}
+
+function disegna(contenitore, html, inPlace){
+  if (!inPlace || !contenitore.firstChild){
+    contenitore.innerHTML = html;
+    return;
+  }
+  const temporaneo = document.createElement("div");
+  temporaneo.innerHTML = html;
+  const figliVecchi = Array.from(contenitore.childNodes);
+  const figliNuovi = Array.from(temporaneo.childNodes);
+  const comuni = Math.min(figliVecchi.length, figliNuovi.length);
+  for (let i = 0; i < comuni; i++) patch(figliVecchi[i], figliNuovi[i]);
+  for (let i = comuni; i < figliNuovi.length; i++){
+    contenitore.appendChild(figliNuovi[i]);
+  }
+  for (let i = figliVecchi.length - 1; i >= comuni; i--){
+    figliVecchi[i].remove();
+  }
+}
+
+// Con il ridisegno in place i nodi sopravvivono, quindi riattaccare
+// i gestori li duplicherebbe: ogni nodo viene marcato una volta.
+function collega(nodo, evento, fn){
+  if (!nodo) return;
+  const marchio = "on" + evento;
+  if (nodo.dataset.collegato && nodo.dataset.collegato.includes(marchio)) return;
+  nodo.dataset.collegato = (nodo.dataset.collegato || "") + marchio + " ";
+  // Qui serve la registrazione vera: chiamare collega() sarebbe
+  // una ricorsione che non registra nulla.
+  Node.prototype.addEventListener.call(nodo, evento, fn);
+}
+
+async function api(url, options){
+  const opts = Object.assign({cache: "no-store"}, options || {});
+  const annulla = new AbortController();
+  const scadenza = setTimeout(() => annulla.abort(), TIMEOUT_RICHIESTA);
+  opts.signal = annulla.signal;
+  if (opts.body && typeof opts.body !== "string"){
+    opts.headers = Object.assign({"Content-Type": "application/json"}, opts.headers);
+    opts.body = JSON.stringify(opts.body);
+  }
+  let response;
+  try {
+    response = await fetch(url, opts);
+  } catch (err){
+    clearTimeout(scadenza);
+    if (err.name === "AbortError"){
+      throw new Error(
+        "Il server non ha risposto entro 30 secondi. Se e' in corso una "
+        + "raccolta dati, riprova fra poco."
+      );
+    }
+    throw err;
+  }
+  clearTimeout(scadenza);
+  const text = await response.text();
+  let payload = {};
+  try { payload = text ? JSON.parse(text) : {}; } catch (e) { payload = {detail: text}; }
+  if (response.status === 401 && !url.includes("/api/login")){
+    location.href = "/login";
+    throw new Error("Sessione scaduta");
+  }
+  if (!response.ok){
+    const detail = payload.detail || payload.error || text || ("HTTP " + response.status);
+    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+  }
+  return payload;
+}
+async function apiData(url, options){
+  const payload = await api(url, options);
+  return payload.data !== undefined ? payload.data : payload;
+}
+
+/* ============================================================
+   Caricamento dati e routing
+   ============================================================ */
+
+async function loadCore(){
+  const [summary, servers] = await Promise.all([
+    apiData("/api/summary"),
+    apiData("/api/servers")
+  ]);
+  state.summary = summary;
+  state.servers = servers;
+  if (summary.temp_warning_c) state.settings.tempWarn = Number(summary.temp_warning_c);
+  if (summary.temp_critical_c) state.settings.tempCrit = Number(summary.temp_critical_c);
+  if (!state.selectedId && servers.length) state.selectedId = servers[0].id;
+  if (state.selectedId && !servers.some((s) => s.id === state.selectedId)){
+    state.selectedId = servers.length ? servers[0].id : null;
+  }
+  const count = summary.events_24h || 0;
+  $("bellCount").textContent = count > 99 ? "99+" : count;
+  $("bellCount").classList.toggle("zero", !count);
+}
+
+async function loadDetail(force){
+  if (!state.selectedId){ state.detail = null; return; }
+  if (!force && state.detail && state.detail.server.id === state.selectedId) return;
+  state.detail = await apiData("/api/servers/" + state.selectedId);
+}
+
+const PAGES = {
+  overview: {title: "iLO Monitor", subtitle: "Monitoraggio centralizzato server HPE"},
+  servers: {title: "Server", subtitle: "Inventario completo dei server monitorati"},
+  thermal: {title: "Mappe termiche", subtitle: "Sensori e ventole di tutti i server"},
+  events: {title: "Eventi", subtitle: "Registro eventi iLO"},
+  reports: {title: "Report", subtitle: "Andamento di consumi, temperature e carico"},
+  alerts: {title: "Avvisi email",
+           subtitle: "Cosa segnalare, per quale server, a quale indirizzo"},
+  settings: {title: "Impostazioni", subtitle: "Soglie, raccolta dati e manutenzione"}
+};
+
+async function go(page, options){
+  state.page = page;
+  const meta = PAGES[page] || PAGES.overview;
+  $("pageTitle").textContent = meta.title;
+  $("pageSubtitle").textContent = meta.subtitle;
+  els("#nav button").forEach((b) => b.classList.toggle("active", b.dataset.page === page));
+  $("search").placeholder = page === "events" ? "Cerca nei messaggi..." : "Cerca server...";
+  await render(options);
+}
+
+async function render(options){
+  const root = $("pageRoot");
+  const opts = options || {};
+  // Aggiornamento automatico sulla stessa pagina: si rattoppa
+  // l'albero esistente invece di rifarlo.
+  const inPlace = Boolean(opts.silenzioso) && state.paginaDisegnata === state.page;
+  state.paginaDisegnata = state.page;
+  try {
+    if (state.page === "overview"){
+      if (!opts.keepDetail) await loadDetail();
+      disegna(root, overviewPage(), inPlace);
+      wireOverview();
+    } else if (state.page === "servers"){
+      disegna(root, serversPage(), inPlace);
+      wireServersPage();
+    } else if (state.page === "thermal"){
+      if (!inPlace) root.innerHTML = '<div class="empty">Caricamento sensori…</div>';
+      const data = await apiData("/api/thermal");
+      state.settings.tempWarn = Number(data.temp_warning_c) || state.settings.tempWarn;
+      state.settings.tempCrit = Number(data.temp_critical_c) || state.settings.tempCrit;
+      disegna(root, thermalPage(data), inPlace);
+    } else if (state.page === "events"){
+      root.innerHTML = eventsPageShell();
+      wireEventsPage();
+      await reloadEvents();
+    } else if (state.page === "reports"){
+      if (!inPlace) root.innerHTML = '<div class="empty">Calcolo report…</div>';
+      const data = await apiData("/api/reports?hours=" + state.reportHours);
+      disegna(root, reportsPage(data), inPlace);
+      wireReportsPage();
+    } else if (state.page === "alerts"){
+      if (!inPlace) root.innerHTML = '<div class="empty">Caricamento…</div>';
+      const data = await apiData("/api/alerts");
+      disegna(root, alertsPage(data), inPlace);
+      wireAlertsPage(data);
+    } else if (state.page === "settings"){
+      if (!inPlace) root.innerHTML = '<div class="empty">Caricamento impostazioni…</div>';
+      const data = await apiData("/api/settings");
+      disegna(root, settingsPage(data), inPlace);
+      wireSettingsPage(data);
+    }
+  } catch (err){
+    root.innerHTML = '<div class="panel"><div class="empty"><b>Caricamento non riuscito</b>'
+      + esc(err.message) + '</div></div>';
+  }
+}
+
+// Le pagine di configurazione contengono moduli: ridisegnarle
+// mentre si scrive cancella quello che si sta digitando. Non
+// mostrano dati in tempo reale, quindi non hanno nulla da aggiornare.
+const PAGINE_SENZA_AUTOAGGIORNAMENTO = new Set(["alerts", "settings"]);
+
+function autoaggiornamentoAttivo(){
+  if (PAGINE_SENZA_AUTOAGGIORNAMENTO.has(state.page)) return false;
+  // Neanche con una finestra aperta o un campo in uso.
+  if ($("modalRoot") && $("modalRoot").innerHTML.trim()) return false;
+  const attivo = document.activeElement;
+  if (attivo && ["INPUT", "SELECT", "TEXTAREA"].includes(attivo.tagName)){
+    return false;
+  }
+  return true;
+}
+
+async function refreshAll(silent){
+  if (state.loading) return;
+  if (silent && !autoaggiornamentoAttivo()){
+    // Rimandiamo: ricontrolla al prossimo giro.
+    state.countdown = state.settings.refresh;
+    return;
+  }
+  state.loading = true;
+  $("refreshBtn").classList.add("busy");
+  $("refreshBtn").innerHTML = '<span class="spin">⟳</span>';
+  try {
+    await loadCore();
+    if (state.page === "overview" || state.page === "servers") await loadDetail(true);
+    await render({keepDetail: true, silenzioso: Boolean(silent)});
+  } catch (err){
+    if (!silent) toast("Aggiornamento non riuscito: " + err.message, "err");
+  } finally {
+    state.loading = false;
+    $("refreshBtn").classList.remove("busy");
+    $("refreshBtn").textContent = "⟳";
+    state.countdown = state.settings.refresh;
+    $("countdown").textContent = state.countdown;
+  }
+}
+
+/* ============================================================
+   Pagina Panoramica
+   ============================================================ */
+
+function overviewPage(){
+  const s = state.summary;
+  return `
+  <div class="kpis">
+    <div class="kpi green">
+      <div class="kpiTop"><div class="kpiIcon">▤</div><div>
+        <div class="kpiValue">${s.total_servers ?? 0}</div>
+        <div class="kpiLabel">Server totali</div></div></div>
+      <div class="kpiSub">
+        <span class="oktxt">${s.ok_servers ?? 0} OK</span> <span class="sep">|</span>
+        <span class="warntxt">${s.warning_servers ?? 0} Warning</span> <span class="sep">|</span>
+        <span class="redtxt">${s.critical_servers ?? 0} Critical</span></div>
+    </div>
+    <div class="kpi green">
+      <div class="kpiTop"><div class="kpiIcon">♨</div><div>
+        <div class="kpiValue">${fmt(s.avg_temperature, " °C")}</div>
+        <div class="kpiLabel">Temperatura aspirazione</div></div></div>
+      <div class="kpiSub">Min ${fmt(s.min_temperature, " °C")} <span class="sep">|</span>
+        Max ${fmt(s.max_temperature, " °C")} <span class="sep">|</span>
+        Picco sensori ${fmt(s.peak_temperature, " °C")}</div>
+    </div>
+    <div class="kpi blue">
+      <div class="kpiTop"><div class="kpiIcon">ϟ</div><div>
+        <div class="kpiValue">${fmtInt(s.total_power, " W")}</div>
+        <div class="kpiLabel">Consumo totale</div></div></div>
+      <div class="kpiSub">Media per server: ${fmtInt(s.avg_power, " W")}</div>
+    </div>
+    <div class="kpi purple">
+      <div class="kpiTop"><div class="kpiIcon">⚑</div><div>
+        <div class="kpiValue">${s.events_24h ?? 0}</div>
+        <div class="kpiLabel">Eventi ultime 24h</div></div></div>
+      <div class="kpiSub">
+        <span class="redtxt">${s.events_critical ?? 0} Critical</span> <span class="sep">|</span>
+        <span class="warntxt">${s.events_warning ?? 0} Warning</span> <span class="sep">|</span>
+        <span class="infotxt">${s.events_info ?? 0} Informativi</span></div>
+    </div>
+  </div>
+
+  <div class="workspace">
+    <div>
+      <div class="panel serverList">
+        <div class="panelHead">
+          <h2>Elenco server</h2>
+          <button class="add" data-act="add-server">＋ &nbsp;Aggiungi server</button>
+        </div>
+        <div class="scrollY">
+          <table class="dataTable serverTable">
+            <thead><tr><th>Nome</th><th>Modello</th><th>Stato</th>
+              <th>Temp</th><th>Potenza</th><th>Azioni</th></tr></thead>
+            <tbody>${serverRows()}</tbody>
+          </table>
+          <div class="serverCards">${serverCards()}</div>
+        </div>
+      </div>
+      <div class="panel eventsPanel">
+        <div class="panelHead"><h2>Eventi recenti</h2>
+          <button class="boxLink" data-act="goto-events">Vedi tutti →</button></div>
+        <div class="scrollY">${recentEventsTable()}</div>
+      </div>
+    </div>
+    <div class="detail">${detailPanel()}</div>
+  </div>`;
+}
+
+function matchesQuery(s){
+  if (!state.query) return true;
+  const q = state.query.toLowerCase();
+  return [s.name, s.ilo_ip, s.model, s.hostname, s.serial_number, s.server_group]
+    .some((v) => String(v || "").toLowerCase().includes(q));
+}
+
+function serverRows(){
+  const list = state.servers.filter(matchesQuery);
+  if (!list.length){
+    return `<tr><td colspan="6"><div class="empty">
+      <b>${state.servers.length ? "Nessun risultato" : "Nessun server monitorato"}</b>
+      ${state.servers.length ? "Prova con un altro termine di ricerca."
+        : "Aggiungi il primo iLO con il pulsante qui sopra."}</div></td></tr>`;
+  }
+  return list.map((s) => {
+    const cls = s.last_collect_status === "ERROR" ? "bad"
+      : !s.enabled ? "off" : health(s.overall_health);
+    const label = !s.enabled ? "Disabilitato"
+      : s.last_collect_status === "ERROR" ? "Errore"
+      : (s.overall_health || "—");
+    return `<tr class="serverRow ${s.id === state.selectedId ? "selected" : ""}"
+      data-server="${s.id}">
+      <td><div class="serverName">${esc(s.name)}</div>
+          <div class="ip">${esc(s.ilo_ip)}</div></td>
+      <td title="${esc(s.model || "")}">${esc(shortModel(s.model) || "—")}</td>
+      <td><span class="state"><span class="stateDot ${cls === "ok" ? "" : cls}"></span>
+        ${esc(label)}</span></td>
+      <td class="${tempClass(s.max_temperature)}">${fmtInt(s.max_temperature, " °C")}</td>
+      <td>${fmtInt(s.consumed_watts, " W")}</td>
+      <td class="rowActions">
+        <button class="iconBtn" data-console="${s.id}"
+          title="Console remota HTML5"${hasConsole(s) ? "" : " disabled"}>▶</button>
+        <button class="iconBtn" data-ilo="${s.id}" title="Apri iLO">↗</button>
+        <button class="iconBtn" data-rowmenu="${s.id}"
+          title="Accensione e riavvio">⏻</button>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+function serverCards(){
+  const list = state.servers.filter(matchesQuery);
+  if (!list.length){
+    return `<div class="empty">
+      <b>${state.servers.length ? "Nessun risultato" : "Nessun server monitorato"}</b>
+      ${state.servers.length ? "Prova con un altro termine di ricerca."
+        : "Aggiungi il primo iLO con il pulsante qui sopra."}</div>`;
+  }
+  return list.map((s) => {
+    const cls = s.last_collect_status === "ERROR" ? "bad"
+      : !s.enabled ? "off" : health(s.overall_health);
+    const label = !s.enabled ? "Disabilitato"
+      : s.last_collect_status === "ERROR" ? "Errore"
+      : (s.overall_health || "—");
+    return `<div class="srvCard ${s.id === state.selectedId ? "selected" : ""}"
+      data-server="${s.id}">
+      <div class="srvTop">
+        <div style="min-width:0">
+          <div class="serverName">${esc(s.name)}</div>
+          <div class="srvMeta">${esc(s.ilo_ip)} ·
+            ${esc(shortModel(s.model) || "—")}</div>
+        </div>
+        <span class="state"><span class="stateDot ${cls === "ok" ? "" : cls}"></span>
+          ${esc(label)}</span>
+      </div>
+      <div class="srvStats">
+        <span><small>Temp</small>
+          <b class="${tempClass(s.max_temperature)}">
+          ${fmtInt(s.max_temperature, " °C")}</b></span>
+        <span><small>Potenza</small><b>${fmtInt(s.consumed_watts, " W")}</b></span>
+        <span><small>Eventi 24h</small><b>${s.events_24h || 0}</b></span>
+      </div>
+      <div class="srvCardActions">
+        <button data-console="${s.id}"${hasConsole(s) ? "" : " disabled"}>
+          ▶ Console</button>
+        <button data-ilo="${s.id}">↗ iLO</button>
+        <button data-rowmenu="${s.id}">⏻ Azioni</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function recentEventsTable(){
+  return '<div class="empty" id="recentEventsBox">Caricamento eventi…</div>';
+}
+
+async function loadRecentEvents(){
+  const box = $("recentEventsBox");
+  if (!box) return;
+  try {
+    const rows = await apiData("/api/events?hours=24&limit=10");
+    if (!rows.length){
+      box.outerHTML = '<div class="empty" id="recentEventsBox">'
+        + 'Nessun evento nelle ultime 24 ore.</div>';
+      return;
+    }
+    box.outerHTML = `<table class="dataTable" id="recentEventsBox">
+      <thead><tr><th>Data/Ora</th><th>Server</th><th>Severità</th><th>Messaggio</th></tr></thead>
+      <tbody>${rows.map((e) => `<tr>
+        <td class="nowrap">${dateLabel(e.event_created)}</td>
+        <td>${esc(e.server_name)}</td>
+        <td class="${severityClass(e.severity)} nowrap">${severityIcon(e.severity)}
+          ${esc(e.severity || "Informativo")}</td>
+        <td>${esc(e.message || "")}</td></tr>`).join("")}</tbody></table>`;
+  } catch (err){
+    box.textContent = "Eventi non disponibili: " + err.message;
+  }
+}
+
+/* ---------- pannello di dettaglio ---------- */
+
+function detailPanel(){
+  const d = state.detail;
+  if (!d){
+    return `<div class="panel"><div class="empty">
+      <b>Nessun server selezionato</b>
+      Seleziona un server dall'elenco per vederne i dettagli.</div></div>`;
+  }
+  const s = d.server;
+  const cls = s.last_collect_status === "ERROR" ? "bad"
+    : !s.enabled ? "off" : health(s.overall_health);
+  const badgeLabel = !s.enabled ? "Disabilitato"
+    : s.last_collect_status === "ERROR" ? "Errore raccolta"
+    : (s.overall_health || "Sconosciuto");
+  const tabs = [
+    ["overview", "Panoramica"], ["hardware", "Hardware"], ["thermal", "Temperature"],
+    ["fans", "Ventole"], ["power", "Alimentazione"], ["storage", "Storage"],
+    ["network", "Rete"], ["events", "Eventi"], ["info", "Informazioni"]
+  ];
+  return `<div class="panel">
+    <div class="detailHead">
+      <div class="detailTitle">
+        <div class="serverGlyph">▤</div>
+        <div>
+          <div class="detailName">${esc(s.name)}
+            <span class="badge ${cls === "unknown" ? "off" : cls}">${esc(badgeLabel)}</span>
+            ${s.power_state && s.power_state !== "On"
+              ? `<span class="badge off">${esc(s.power_state)}</span>` : ""}</div>
+          <div class="detailMeta">${esc(s.model || "—")} <span class="sep">|</span>
+            ${esc(s.ilo_version || "iLO")} <span class="sep">|</span>
+            SN: ${esc(s.serial_number || "—")} <span class="sep">|</span>
+            IP iLO: ${esc(s.ilo_ip)}</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="action" data-act="menu">Azioni ⌄</button>
+        <button class="action" data-act="console"${hasConsole(s) ? ""
+          : ' disabled title="Richiede licenza iLO Advanced"'}>Console ▶</button>
+        <button class="action green" data-act="open-ilo">Apri iLO ↗</button>
+        <div class="menu hidden" id="actionMenu">
+          <button data-act="collect-now">Aggiorna dati adesso</button>
+          <button data-act="toggle-led">Accendi/spegni LED UID</button>
+          <hr>
+          <button data-act="power-on">Accendi server</button>
+          <button data-act="power-graceful_shutdown">Spegnimento ordinato</button>
+          <button data-act="power-graceful_restart">Riavvio ordinato</button>
+          <button data-act="power-force_restart">Riavvio forzato</button>
+          <button data-act="power-force_off">Spegnimento forzato</button>
+          <hr>
+          <button data-act="edit-server">Modifica server…</button>
+          <button class="danger" data-act="delete-server">Rimuovi server…</button>
+        </div>
+      </div>
+    </div>
+    ${s.last_error ? `<div style="padding:10px 14px;background:#2a1a1e;
+      border-bottom:1px solid #4a2b31;color:#ff9aa2;font-size:11px">
+      Ultima raccolta fallita: ${esc(s.last_error)}</div>` : ""}
+    <div class="tabs">${tabs.map(([k, label]) =>
+      `<button data-tab="${k}" class="${state.tab === k ? "active" : ""}">${label}</button>`
+    ).join("")}</div>
+    <div class="detailBody">${tabContent()}</div>
+  </div>`;
+}
+
+function tabContent(){
+  const d = state.detail;
+  switch (state.tab){
+    case "hardware": return hardwareTab(d);
+    case "thermal": return thermalTab(d);
+    case "fans": return fansTab(d);
+    case "power": return powerTab(d);
+    case "storage": return storageTab(d);
+    case "network": return networkTab(d);
+    case "events": return eventsTab(d);
+    case "info": return infoTab(d);
+    default: return overviewTab(d);
+  }
+}
+
+function emptyBox(text){
+  return `<div class="empty">${esc(text)}</div>`;
+}
+
+function overviewTab(d){
+  const s = d.server, m = d.metric || {}, p = d.power || {};
+  const sensors = (d.thermal || []).slice()
+    .sort((a, b) => (num(b.temperature_c) || 0) - (num(a.temperature_c) || 0));
+  const maxTemp = sensors.length ? num(sensors[0].temperature_c) : null;
+  const up = uptimeFrom(s.last_boot_at);
+  const cores = s.core_count ? `${s.core_count} core totali` : "";
+  return `
+  <div class="miniGrid">
+    <div class="mini"><div class="miniTitle">Stato generale</div>
+      <div class="miniValue ${health(s.overall_health) === "ok" ? "oktxt"
+        : health(s.overall_health) === "bad" ? "redtxt" : "warntxt"}">
+        ${esc(s.overall_health || "—")}</div>
+      <div class="miniSub">${s.events_24h || 0} eventi nelle ultime 24h</div></div>
+    <div class="mini"><div class="miniTitle">Uptime</div>
+      <div class="miniValue">${up ? up.days + " giorni" : "—"}</div>
+      <div class="miniSub">${up ? "dal " + up.since.toLocaleDateString("it-IT") + " "
+        + up.since.toLocaleTimeString("it-IT", {hour:"2-digit", minute:"2-digit"})
+        : "ultimo avvio non riportato da iLO"}</div></div>
+    <div class="mini"><div class="miniTitle">Consumo</div>
+      <div class="miniValue">${fmtInt(p.consumed_watts, " W")}</div>
+      <div class="miniSub">Media ultime 24h: ${fmtInt(p.average_watts, " W")}</div></div>
+    <div class="mini"><div class="miniTitle">Temperatura max</div>
+      <div class="miniValue ${tempClass(maxTemp) === "bad" ? "redtxt"
+        : tempClass(maxTemp) === "warn" ? "warntxt" : "oktxt"}">
+        ${fmtInt(maxTemp, " °C")}</div>
+      <div class="miniSub">${sensors.length ? esc(sensors[0].sensor_name) : "nessun sensore"}</div></div>
+  </div>
+
+  <div class="detailGrid">
+    <div class="box">
+      <div class="boxHead">Temperature
+        <button class="boxLink" data-tab-link="thermal">Vedi tutte →</button></div>
+      <div class="boxBody">${sensors.length ? sensors.slice(0, 6).map((x) => {
+        const v = num(x.temperature_c);
+        const c = tempClass(v);
+        return `<div class="line"><span>${esc(x.sensor_name)}</span>
+          <span class="val"><b class="tempVal ${c}">${fmtInt(v, " °C")}</b>
+          <span class="bar"><i class="${c}" style="width:${Math.min(100,
+            Math.max(4, (v || 0)))}%"></i></span></span></div>`;
+      }).join("") : emptyBox("Nessun sensore rilevato.")}</div>
+    </div>
+
+    <div class="box">
+      <div class="boxHead">Ventole
+        <button class="boxLink" data-tab-link="fans">Vedi tutte →</button></div>
+      <div class="boxBody">${(d.fans || []).length ? (d.fans || []).slice(0, 6).map((x) => {
+        const v = num(x.speed_percent) || 0;
+        const c = v >= 80 ? "bad" : v >= 60 ? "warn" : "";
+        return `<div class="line"><span>${esc(x.fan_name || x.fan_id)}</span>
+          <span class="val"><b class="${c === "bad" ? "redtxt" : c === "warn" ? "warntxt" : ""}">
+          ${fmtInt(v, " %")}</b>
+          <span class="bar"><i class="${c}" style="width:${Math.min(100, v)}%"></i></span>
+          </span></div>`;
+      }).join("") : emptyBox("Nessuna ventola rilevata.")}</div>
+    </div>
+
+    <div class="box">
+      <div class="boxHead">Alimentatori
+        <button class="boxLink" data-tab-link="power">Vedi tutte →</button></div>
+      <div class="boxBody">${(d.power_supplies || []).length
+        ? (d.power_supplies || []).map((x) => `<div class="line">
+          <span>PSU ${esc(x.psu_id || "")}</span>
+          <span class="val"><b class="${health(x.health) === "ok" ? "statusOk" : "statusWarn"}">
+          ● ${esc(x.health || "—")}</b>
+          <span>${fmtInt(x.power_output_watts ?? x.capacity_watts, " W")}</span></span>
+          </div>`).join("")
+        : emptyBox("Nessun alimentatore rilevato.")}</div>
+    </div>
+
+    <div class="box">
+      <div class="boxHead">Storage
+        <button class="boxLink" data-tab-link="storage">Vedi tutti →</button></div>
+      <div class="boxBody">${(d.storage_controllers || []).map((x) => `<div class="line">
+        <span>${esc(x.model || x.controller_id)}</span>
+        <b class="${health(x.health) === "ok" ? "statusOk" : "statusWarn"}">
+        ● ${esc(x.health || "—")}</b></div>`).join("")
+        + (d.drives || []).slice(0, 4).map((x) => `<div class="line">
+        <span>${esc(x.bay ? "Bay " + x.bay : x.drive_id)}</span>
+        <span class="val"><b class="${health(x.health) === "ok" ? "statusOk" : "statusWarn"}">
+        ● ${esc(x.health || "—")}</b><span>${tb(x.capacity_bytes)}</span></span></div>`).join("")
+        + ((d.volumes || []).map((x) => `<div class="line">
+        <span>${esc(x.name || x.volume_id)}${x.raid_type ? " (" + esc(x.raid_type) + ")" : ""}</span>
+        <span>${tb(x.capacity_bytes)}</span></div>`).join(""))
+        || emptyBox("Nessun dato storage.")}</div>
+    </div>
+
+    <div class="box">
+      <div class="boxHead">CPU e memoria</div>
+      <div class="boxBody"><table class="infoTable">
+        <tr><td>CPU</td><td>${esc(s.processor_summary || "—")}</td></tr>
+        <tr><td>Socket popolati</td><td>${s.processor_count ?? "—"}${cores ? " · " + cores : ""}</td></tr>
+        <tr><td>Memoria totale</td><td>${fmtInt(s.memory_total_gib, " GB")}</td></tr>
+        <tr><td>Utilizzo CPU</td><td>${fmt(m.cpu_utilization, " %")}</td></tr>
+        <tr><td>Bus memoria</td><td>${fmt(m.memory_bus_utilization, " %")}</td></tr>
+        <tr><td>Bus I/O</td><td>${fmt(m.io_bus_utilization, " %")}</td></tr>
+      </table></div>
+    </div>
+
+    <div class="box">
+      <div class="boxHead">Informazioni</div>
+      <div class="boxBody"><table class="infoTable">
+        <tr><td>Modello</td><td>${esc(s.model || "—")}</td></tr>
+        <tr><td>Seriale</td><td>${esc(s.serial_number || "—")}</td></tr>
+        <tr><td>Versione iLO</td><td>${esc(s.ilo_firmware || s.ilo_version || "—")}</td></tr>
+        <tr><td>BIOS</td><td>${esc(s.bios_version || "—")}</td></tr>
+        <tr><td>Hostname</td><td>${esc(s.hostname || "—")}</td></tr>
+        <tr><td>Ultima raccolta</td><td>${relative(s.last_collect_at)}</td></tr>
+      </table></div>
+    </div>
+  </div>
+
+  <div class="box fullPanel">
+    <div class="boxHead">Consumo ultime 24 ore
+      <span class="boxLink" id="powerChartLabel">caricamento…</span></div>
+    <div class="boxBody" id="powerChartBox">
+      <div class="empty">Caricamento serie storica…</div></div>
+  </div>`;
+}
+
+function hardwareTab(d){
+  const s = d.server;
+  const cpus = d.processors || [];
+  const dimms = (d.memory || []).filter(
+    (x) => String(x.state || "").toLowerCase() !== "absent" && num(x.capacity_mib));
+  const slots = (d.memory || []).length;
+  return `<div class="grid2">
+    <div class="box"><div class="boxHead">Processori <span class="boxLink">${cpus.length} socket</span></div>
+      <div class="boxBody flush">${cpus.length ? `<table class="dataTable">
+        <thead><tr><th>Socket</th><th>Modello</th><th>Core</th><th>Thread</th><th>Stato</th></tr></thead>
+        <tbody>${cpus.map((c) => `<tr>
+          <td>${esc(c.socket || c.processor_id)}</td>
+          <td>${esc(c.model || "—")}</td>
+          <td>${c.total_cores ?? "—"}</td>
+          <td>${c.total_threads ?? "—"}</td>
+          <td class="${health(c.health) === "ok" ? "statusOk" : "statusWarn"}">
+            ${esc(c.health || "—")}</td></tr>`).join("")}</tbody></table>`
+        : emptyBox("Nessun processore rilevato.")}</div></div>
+
+    <div class="box"><div class="boxHead">Memoria
+      <span class="boxLink">${dimms.length} moduli su ${slots} slot</span></div>
+      <div class="boxBody flush">${dimms.length ? `<table class="dataTable">
+        <thead><tr><th>Slot</th><th>Capacità</th><th>Velocità</th><th>Tipo</th><th>Stato</th></tr></thead>
+        <tbody>${dimms.map((x) => `<tr>
+          <td>${esc(x.device_locator || x.dimm_id)}</td>
+          <td>${fmtInt((num(x.capacity_mib) || 0) / 1024, " GB")}</td>
+          <td>${fmtInt(x.speed_mhz, " MHz")}</td>
+          <td>${esc(x.memory_type || "—")}</td>
+          <td class="${health(x.health) === "ok" ? "statusOk" : "statusWarn"}">
+            ${esc(x.health || "—")}</td></tr>`).join("")}</tbody></table>`
+        : emptyBox("Nessun modulo di memoria popolato rilevato.")}</div></div>
+
+    <div class="box"><div class="boxHead">Riepilogo sistema</div>
+      <div class="boxBody"><table class="infoTable">
+        <tr><td>Produttore</td><td>${esc(s.manufacturer || "—")}</td></tr>
+        <tr><td>Modello</td><td>${esc(s.model || "—")}</td></tr>
+        <tr><td>Numero di serie</td><td>${esc(s.serial_number || "—")}</td></tr>
+        <tr><td>UUID</td><td>${esc(s.uuid || "—")}</td></tr>
+        <tr><td>BIOS</td><td>${esc(s.bios_version || "—")}</td></tr>
+        <tr><td>Memoria installata</td><td>${fmtInt(s.memory_total_gib, " GB")}</td></tr>
+        <tr><td>Slot liberi</td><td>${slots ? slots - dimms.length : "—"}</td></tr>
+      </table></div></div>
+
+    <div class="box"><div class="boxHead">Controller storage</div>
+      <div class="boxBody">${(d.storage_controllers || []).length
+        ? (d.storage_controllers || []).map((x) => `<table class="infoTable">
+          <tr><td>Modello</td><td>${esc(x.model || x.controller_id)}</td></tr>
+          <tr><td>Firmware</td><td>${esc(x.firmware || "—")}</td></tr>
+          <tr><td>Cache</td><td>${fmtInt(x.cache_mib, " MB")}</td></tr>
+          <tr><td>Stato</td><td class="${health(x.health) === "ok" ? "statusOk" : "statusWarn"}">
+            ${esc(x.health || "—")}</td></tr></table>`).join("")
+        : emptyBox("Nessun controller rilevato.")}</div></div>
+  </div>`;
+}
+
+function thermalTab(d){
+  const sensors = (d.thermal || []).slice()
+    .sort((a, b) => (num(b.temperature_c) || 0) - (num(a.temperature_c) || 0));
+  if (!sensors.length) return `<div class="box">${emptyBox("Nessun sensore rilevato.")}</div>`;
+  return `<div class="box">
+    <div class="boxHead">Sensori termici <span class="boxLink">${sensors.length} sensori</span></div>
+    <div class="boxBody"><div class="thermalStrip">${sensors.map((x) => {
+      const v = num(x.temperature_c);
+      return `<div class="thermalItem"><div>
+        <small title="${esc(x.sensor_name)}">${esc(x.sensor_name)}</small>
+        <span style="font-size:9px;color:#8196a7">soglia
+          ${fmtInt(x.critical_threshold ?? x.warning_threshold, "°")}</span></div>
+        <strong class="${tempClass(v)}">${fmtInt(v, "°")}</strong></div>`;
+    }).join("")}</div></div></div>
+    <div class="box fullPanel"><div class="boxHead">Dettaglio soglie</div>
+    <div class="boxBody flush"><table class="dataTable">
+      <thead><tr><th>Sensore</th><th>Temperatura</th><th>Warning</th><th>Critical</th>
+        <th>Fatal</th><th>Stato</th></tr></thead>
+      <tbody>${sensors.map((x) => `<tr>
+        <td>${esc(x.sensor_name)}</td>
+        <td class="${tempClass(x.temperature_c)}">${fmtInt(x.temperature_c, " °C")}</td>
+        <td>${fmtInt(x.warning_threshold, " °C")}</td>
+        <td>${fmtInt(x.critical_threshold, " °C")}</td>
+        <td>${fmtInt(x.fatal_threshold, " °C")}</td>
+        <td class="${health(x.health) === "ok" ? "statusOk" : "statusWarn"}">
+          ${esc(x.health || "—")}</td></tr>`).join("")}</tbody></table></div></div>`;
+}
+
+function fansTab(d){
+  const fans = d.fans || [];
+  if (!fans.length) return `<div class="box">${emptyBox("Nessuna ventola rilevata.")}</div>`;
+  const avg = fans.reduce((a, x) => a + (num(x.speed_percent) || 0), 0) / fans.length;
+  return `<div class="miniGrid">
+    <div class="mini"><div class="miniTitle">Ventole</div>
+      <div class="miniValue">${fans.length}</div><div class="miniSub">rilevate</div></div>
+    <div class="mini"><div class="miniTitle">Velocità media</div>
+      <div class="miniValue">${fmtInt(avg, " %")}</div><div class="miniSub">di tutte le ventole</div></div>
+    <div class="mini"><div class="miniTitle">Velocità massima</div>
+      <div class="miniValue">${fmtInt(Math.max(...fans.map(
+        (x) => num(x.speed_percent) || 0)), " %")}</div>
+      <div class="miniSub">picco attuale</div></div>
+    <div class="mini"><div class="miniTitle">Anomalie</div>
+      <div class="miniValue ${fans.some((x) => health(x.health) !== "ok") ? "warntxt" : "oktxt"}">
+        ${fans.filter((x) => health(x.health) !== "ok").length}</div>
+      <div class="miniSub">ventole non OK</div></div>
+  </div>
+  <div class="box"><div class="boxHead">Velocità ventole</div><div class="boxBody">
+    ${fans.map((x) => {
+      const v = num(x.speed_percent) || 0;
+      const c = v >= 80 ? "bad" : v >= 60 ? "warn" : "";
+      return `<div class="line"><span>${esc(x.fan_name || x.fan_id)}
+        <span style="color:#7a8fa1">· ${esc(x.state || "")}</span></span>
+        <span class="val"><b class="${c === "bad" ? "redtxt" : c === "warn" ? "warntxt" : ""}">
+        ${fmtInt(v, " %")}</b>
+        <span class="bar"><i class="${c}" style="width:${Math.min(100, v)}%"></i></span></span>
+      </div>`;
+    }).join("")}</div></div>`;
+}
+
+function powerTab(d){
+  const p = d.power || {};
+  const psus = d.power_supplies || [];
+  return `<div class="miniGrid">
+    <div class="mini"><div class="miniTitle">Consumo attuale</div>
+      <div class="miniValue">${fmtInt(p.consumed_watts, " W")}</div>
+      <div class="miniSub">rilevato dall'iLO</div></div>
+    <div class="mini"><div class="miniTitle">Media</div>
+      <div class="miniValue">${fmtInt(p.average_watts, " W")}</div>
+      <div class="miniSub">finestra riportata da iLO</div></div>
+    <div class="mini"><div class="miniTitle">Picco</div>
+      <div class="miniValue">${fmtInt(p.maximum_watts, " W")}</div>
+      <div class="miniSub">minimo ${fmtInt(p.minimum_watts, " W")}</div></div>
+    <div class="mini"><div class="miniTitle">Capacità</div>
+      <div class="miniValue">${fmtInt(p.power_capacity_watts, " W")}</div>
+      <div class="miniSub">${psus.length} alimentatori</div></div>
+  </div>
+  <div class="grid2">
+    <div class="box"><div class="boxHead">Alimentatori</div><div class="boxBody flush">
+      ${psus.length ? `<table class="dataTable">
+        <thead><tr><th>PSU</th><th>Modello</th><th>Uscita</th><th>Capacità</th><th>Stato</th></tr></thead>
+        <tbody>${psus.map((x) => `<tr>
+          <td>PSU ${esc(x.psu_id || "")}</td>
+          <td>${esc(x.name || "—")}</td>
+          <td>${fmtInt(x.power_output_watts, " W")}</td>
+          <td>${fmtInt(x.capacity_watts, " W")}</td>
+          <td class="${health(x.health) === "ok" ? "statusOk" : "statusWarn"}">
+            ● ${esc(x.health || "—")}</td></tr>`).join("")}</tbody></table>`
+        : emptyBox("Nessun alimentatore rilevato.")}</div></div>
+    <div class="box"><div class="boxHead">Ripartizione consumi</div><div class="boxBody">
+      <table class="infoTable">
+        <tr><td>CPU</td><td>${fmtInt(p.cpu_watts, " W")}</td></tr>
+        <tr><td>Memoria</td><td>${fmtInt(p.dimm_watts, " W")}</td></tr>
+        <tr><td>GPU</td><td>${fmtInt(p.gpu_watts, " W")}</td></tr>
+        <tr><td>Totale sistema</td><td>${fmtInt(p.consumed_watts, " W")}</td></tr>
+        <tr><td>Rilevato il</td><td>${dateLabel(p.collected_at)}</td></tr>
+      </table></div></div>
+  </div>
+  <div class="box fullPanel"><div class="boxHead">Consumo ultime 24 ore</div>
+    <div class="boxBody" id="powerChartBox"><div class="empty">Caricamento…</div></div></div>`;
+}
+
+function storageTab(d){
+  const drives = d.drives || [];
+  const volumes = d.volumes || [];
+  return `<div class="grid2">
+    <div class="box"><div class="boxHead">Controller</div><div class="boxBody flush">
+      ${(d.storage_controllers || []).length ? `<table class="dataTable">
+        <thead><tr><th>Modello</th><th>Firmware</th><th>Cache</th><th>Stato</th></tr></thead>
+        <tbody>${(d.storage_controllers || []).map((x) => `<tr>
+          <td>${esc(x.model || x.controller_id)}</td>
+          <td>${esc(x.firmware || "—")}</td>
+          <td>${fmtInt(x.cache_mib, " MB")}</td>
+          <td class="${health(x.health) === "ok" ? "statusOk" : "statusWarn"}">
+            ● ${esc(x.health || "—")}</td></tr>`).join("")}</tbody></table>`
+        : emptyBox("Nessun controller rilevato.")}</div></div>
+
+    <div class="box"><div class="boxHead">Volumi logici</div><div class="boxBody flush">
+      ${volumes.length ? `<table class="dataTable">
+        <thead><tr><th>Nome</th><th>RAID</th><th>Capacità</th><th>Stato</th></tr></thead>
+        <tbody>${volumes.map((x) => `<tr>
+          <td>${esc(x.name || x.volume_id)}</td>
+          <td>${esc(x.raid_type || "—")}</td>
+          <td>${tb(x.capacity_bytes)}</td>
+          <td class="${health(x.health) === "ok" ? "statusOk" : "statusWarn"}">
+            ● ${esc(x.health || "—")}</td></tr>`).join("")}</tbody></table>`
+        : emptyBox("Nessun volume rilevato.")}</div></div>
+  </div>
+  <div class="box fullPanel"><div class="boxHead">Dischi fisici
+    <span class="boxLink">${drives.length} dischi</span></div>
+    <div class="boxBody flush">${drives.length ? `<table class="dataTable">
+      <thead><tr><th>Bay</th><th>Modello</th><th>Tipo</th><th>Interfaccia</th>
+        <th>Capacità</th><th>Vita residua</th><th>Stato</th></tr></thead>
+      <tbody>${drives.map((x) => `<tr>
+        <td>${esc(x.bay || x.drive_id)}</td>
+        <td>${esc(x.model || "—")}</td>
+        <td>${esc(x.media_type || "—")}</td>
+        <td>${esc(x.protocol || "—")}${x.negotiated_speed_gbs
+          ? " · " + fmtInt(x.negotiated_speed_gbs, " Gb/s") : ""}</td>
+        <td>${tb(x.capacity_bytes)}</td>
+        <td>${x.media_life_left_percent !== null && x.media_life_left_percent !== undefined
+          ? fmtInt(x.media_life_left_percent, " %") : "—"}</td>
+        <td class="${x.failure_predicted ? "statusBad"
+          : health(x.health) === "ok" ? "statusOk" : "statusWarn"}">
+          ● ${x.failure_predicted ? "Guasto previsto" : esc(x.health || "—")}</td>
+      </tr>`).join("")}</tbody></table>` : emptyBox("Nessun disco rilevato.")}</div></div>`;
+}
+
+function networkTab(d){
+  const nics = d.network || [];
+  return `<div class="box"><div class="boxHead">Interfacce di rete
+    <span class="boxLink">${nics.length} interfacce</span></div>
+    <div class="boxBody flush">${nics.length ? `<table class="dataTable">
+      <thead><tr><th>Interfaccia</th><th>MAC</th><th>IPv4</th><th>Link</th>
+        <th>Velocità</th><th>Stato</th></tr></thead>
+      <tbody>${nics.map((x) => `<tr>
+        <td>${esc(x.name || x.interface_id)}</td>
+        <td>${esc(x.mac_address || "—")}</td>
+        <td>${esc(x.ipv4_address || "—")}</td>
+        <td class="${String(x.link_status).toLowerCase().includes("up")
+          ? "statusOk" : "statusWarn"}">${esc(x.link_status || "—")}</td>
+        <td>${fmtInt(x.speed_mbps, " Mb/s")}</td>
+        <td>${esc(x.state || "—")}</td></tr>`).join("")}</tbody></table>`
+      : emptyBox("Nessuna interfaccia rilevata.")}</div></div>`;
+}
+
+function eventsTab(d){
+  const events = d.events || [];
+  return `<div class="box"><div class="boxHead">Registro eventi iLO
+    <button class="boxLink" data-act="goto-events">Apri la pagina Eventi →</button></div>
+    <div class="boxBody flush"><div class="scrollY">${events.length ? `<table class="dataTable">
+      <thead><tr><th>Data/Ora</th><th>Severità</th><th>ID messaggio</th><th>Messaggio</th></tr></thead>
+      <tbody>${events.map((e) => `<tr>
+        <td class="nowrap">${dateLabel(e.event_created)}</td>
+        <td class="${severityClass(e.severity)} nowrap">${severityIcon(e.severity)}
+          ${esc(e.severity || "Informativo")}</td>
+        <td>${esc(e.message_id || "—")}</td>
+        <td>${esc(e.message || "")}</td></tr>`).join("")}</tbody></table>`
+      : emptyBox("Nessun evento nel log iLO.")}</div></div></div>`;
+}
+
+function infoTab(d){
+  const s = d.server;
+  const runs = d.runs || [];
+  return `<div class="grid2">
+    <div class="box"><div class="boxHead">Identità</div><div class="boxBody">
+      <table class="infoTable">
+        <tr><td>Nome in monitoraggio</td><td>${esc(s.name)}</td></tr>
+        <tr><td>Hostname</td><td>${esc(s.hostname || "—")}</td></tr>
+        <tr><td>Gruppo</td><td>${esc(s.server_group || "—")}</td></tr>
+        <tr><td>Produttore</td><td>${esc(s.manufacturer || "—")}</td></tr>
+        <tr><td>Modello</td><td>${esc(s.model || "—")}</td></tr>
+        <tr><td>Numero di serie</td><td>${esc(s.serial_number || "—")}</td></tr>
+        <tr><td>UUID</td><td>${esc(s.uuid || "—")}</td></tr>
+      </table></div></div>
+    <div class="box"><div class="boxHead">Gestione iLO</div><div class="boxBody">
+      <table class="infoTable">
+        <tr><td>Indirizzo iLO</td><td>${esc(s.ilo_ip)}</td></tr>
+        <tr><td>Utente</td><td>${esc(s.ilo_user || "—")}</td></tr>
+        <tr><td>Generazione</td><td>${esc(s.ilo_version || "—")}</td></tr>
+        <tr><td>Firmware</td><td>${esc(s.ilo_firmware || "—")}</td></tr>
+        <tr><td>BIOS</td><td>${esc(s.bios_version || "—")}</td></tr>
+        <tr><td>Licenza</td><td>${esc(s.ilo_license || "—")}</td></tr>
+        <tr><td>Alimentazione</td><td>${esc(s.power_state || "—")}</td></tr>
+        <tr><td>LED UID</td><td>${esc(s.indicator_led || "—")}</td></tr>
+        <tr><td>Monitoraggio</td><td>${s.enabled ? "attivo" : "sospeso"}</td></tr>
+      </table></div></div>
+    ${s.notes ? `<div class="box"><div class="boxHead">Note</div>
+      <div class="boxBody" style="white-space:pre-wrap;font-size:11px;color:#c3d2dd">
+      ${esc(s.notes)}</div></div>` : ""}
+    <div class="box"><div class="boxHead">Ultime raccolte</div><div class="boxBody flush">
+      ${runs.length ? `<table class="dataTable">
+        <thead><tr><th>Avvio</th><th>Durata</th><th>Esito</th></tr></thead>
+        <tbody>${runs.map((r) => {
+          let duration = "—";
+          if (r.started_at && r.finished_at){
+            const a = new Date(String(r.started_at).replace(" ", "T") + "Z");
+            const b = new Date(String(r.finished_at).replace(" ", "T") + "Z");
+            if (!isNaN(a) && !isNaN(b)) duration = Math.round((b - a) / 1000) + " s";
+          }
+          return `<tr><td class="nowrap">${dateLabel(r.started_at)}</td>
+            <td>${duration}</td>
+            <td class="${r.status === "OK" ? "statusOk" : "statusBad"}"
+              title="${esc(r.error_message || "")}">${esc(r.status)}</td></tr>`;
+        }).join("")}</tbody></table>`
+        : emptyBox("Nessuna raccolta registrata.")}</div></div>
+  </div>`;
+}
+
+/* ---------- eventi della panoramica ---------- */
+
+function rowPowerMenu(server, anchor){
+  closeRowMenu();
+  const menu = document.createElement("div");
+  menu.className = "menu";
+  menu.id = "rowMenu";
+  menu.innerHTML = `
+    <div style="padding:6px 10px;font-size:10px;color:#7a8fa1">
+      ${esc(server.name)}</div>
+    <hr>
+    <button data-p="on">Accendi</button>
+    <button data-p="graceful_shutdown">Spegnimento ordinato</button>
+    <button data-p="graceful_restart">Riavvio ordinato</button>
+    <button data-p="force_restart">Riavvio forzato</button>
+    <button data-p="force_off">Spegnimento forzato</button>
+    <hr>
+    <button data-led="1">Accendi/spegni LED UID</button>`;
+  // Su schermo largo il menu si aggancia al pulsante; sul telefono
+  // il CSS lo trasforma in un pannello a tutta larghezza in basso,
+  // quindi qui la posizione non va nemmeno calcolata.
+  if (window.innerWidth > 820){
+    const box = anchor.getBoundingClientRect();
+    menu.style.position = "fixed";
+    menu.style.top = Math.min(box.bottom + 4, window.innerHeight - 260) + "px";
+    menu.style.right = (window.innerWidth - box.right) + "px";
+  }
+  document.body.appendChild(menu);
+
+  els("[data-p]", menu).forEach((b) => collega(b, "click", (ev) => {
+    ev.stopPropagation();
+    closeRowMenu();
+    powerAction(server, b.dataset.p);
+  }));
+  const led = el("[data-led]", menu);
+  if (led) collega(led, "click", (ev) => {
+    ev.stopPropagation();
+    closeRowMenu();
+    toggleLed(server.id);
+  });
+}
+
+function closeRowMenu(){
+  const old = $("rowMenu");
+  if (old) old.remove();
+}
+
+function wireRowActions(){
+  els("[data-console]").forEach((b) => collega(b, "click", (ev) => {
+    ev.stopPropagation();
+    const s = state.servers.find((x) => x.id === Number(b.dataset.console));
+    if (s) openConsole(s);
+  }));
+  els("[data-ilo]").forEach((b) => collega(b, "click", (ev) => {
+    ev.stopPropagation();
+    const s = state.servers.find((x) => x.id === Number(b.dataset.ilo));
+    if (s) window.open("https://" + s.ilo_ip, "_blank", "noopener");
+  }));
+  els("[data-rowmenu]").forEach((b) => collega(b, "click", (ev) => {
+    ev.stopPropagation();
+    const s = state.servers.find((x) => x.id === Number(b.dataset.rowmenu));
+    if (s) rowPowerMenu(s, b);
+  }));
+}
+
+function wireOverview(){
+  wireRowActions();
+  els("[data-server]").forEach((row) => {
+    collega(row, "click", async (ev) => {
+      const d = ev.target.dataset || {};
+      if (d.console || d.ilo || d.rowmenu) return;
+      state.selectedId = Number(row.dataset.server);
+      state.tab = "overview";
+      state.detail = null;
+      await loadDetail(true);
+      await render({keepDetail: true});
+    });
+  });
+  els(".tabs [data-tab]").forEach((btn) => {
+    collega(btn, "click", () => {
+      state.tab = btn.dataset.tab;
+      render({keepDetail: true});
+    });
+  });
+  els("[data-tab-link]").forEach((btn) => {
+    collega(btn, "click", () => {
+      state.tab = btn.dataset.tabLink;
+      render({keepDetail: true});
+    });
+  });
+  wireDetailActions();
+  loadPowerChart();
+  loadRecentEvents();
+}
+
+function wireDetailActions(){
+  const menu = $("actionMenu");
+  els("[data-act]").forEach((btn) => {
+    const act = btn.dataset.act;
+    collega(btn, "click", async (ev) => {
+      ev.stopPropagation();
+      if (act === "menu"){ menu.classList.toggle("hidden"); return; }
+      if (menu) menu.classList.add("hidden");
+      if (act === "add-server") return openServerModal(null);
+      if (act === "goto-events") return go("events");
+      if (!state.detail) return;
+      if (act === "edit-server") return openServerModal(state.detail.server);
+      if (act === "delete-server") return openDeleteModal(state.detail.server);
+      if (act === "console"){
+        openConsole(state.detail.server);
+        return;
+      }
+      if (act === "open-ilo"){
+        window.open("https://" + state.detail.server.ilo_ip, "_blank", "noopener");
+        return;
+      }
+      if (act === "collect-now") return collectNow(state.detail.server.id);
+      if (act === "toggle-led") return toggleLed(state.detail.server.id);
+      if (act.startsWith("power-")) return powerAction(state.detail.server, act.slice(6));
+    });
+  });
+}
+
+document.addEventListener("click", () => {
+  const menu = $("actionMenu");
+  if (menu) menu.classList.add("hidden");
+  closeRowMenu();
+});
+
+async function collectNow(id){
+  try {
+    const r = await api("/api/servers/" + id + "/collect", {method: "POST"});
+    toast(r.message || "Raccolta avviata");
+    setTimeout(() => refreshAll(true), 12000);
+  } catch (err){ toast("Raccolta non avviata: " + err.message, "err"); }
+}
+
+async function toggleLed(id){
+  try {
+    const r = await api("/api/servers/" + id + "/led", {method: "POST"});
+    toast("LED UID ora: " + r.indicator_led);
+  } catch (err){ toast(err.message, "err"); }
+}
+
+const POWER_LABELS = {
+  on: "accendere", graceful_shutdown: "spegnere in modo ordinato",
+  force_off: "spegnere forzatamente", graceful_restart: "riavviare in modo ordinato",
+  force_restart: "riavviare forzatamente"
+};
+
+async function powerAction(server, action){
+  const label = POWER_LABELS[action] || action;
+  if (!confirm(`Confermi di voler ${label} il server ${server.name}?`)) return;
+  try {
+    const r = await api("/api/servers/" + server.id + "/power",
+      {method: "POST", body: {action}});
+    toast(r.message || "Comando inviato");
+    setTimeout(() => refreshAll(true), 6000);
+  } catch (err){ toast("Comando rifiutato: " + err.message, "err"); }
+}
+
+/* ---------- grafico consumo ---------- */
+
+async function loadPowerChart(){
+  const box = $("powerChartBox");
+  if (!box || !state.selectedId) return;
+  try {
+    const data = await apiData(
+      "/api/servers/" + state.selectedId + "/metrics?hours=24");
+    const series = (data.power || [])
+      .map((r) => ({x: r.collected_at, y: num(r.consumed_watts)}))
+      .filter((p) => p.y !== null);
+    const label = $("powerChartLabel");
+    if (!series.length){
+      box.innerHTML = emptyBox("Nessuna rilevazione nelle ultime 24 ore. "
+        + "Il collector registra un punto a ogni esecuzione.");
+      if (label) label.textContent = "";
+      return;
+    }
+    if (label) label.textContent = series.length + " rilevazioni";
+    box.innerHTML = lineChart([{points: series, color: "#45a8ff", name: "Watt"}], "W");
+  } catch (err){
+    box.innerHTML = emptyBox("Grafico non disponibile: " + err.message);
+  }
+}
+
+function lineChart(seriesList, unit, height){
+  const W = 1000, H = height || 170, padL = 46, padR = 12, padT = 12, padB = 24;
+  const all = seriesList.flatMap((s) => s.points);
+  if (!all.length) return emptyBox("Nessun dato.");
+  const ys = all.map((p) => p.y);
+  let minY = Math.min(...ys), maxY = Math.max(...ys);
+  if (minY === maxY){ minY -= 1; maxY += 1; }
+  const pad = (maxY - minY) * 0.12;
+  minY = Math.max(0, minY - pad); maxY = maxY + pad;
+
+  const times = all.map((p) => new Date(String(p.x).replace(" ", "T") + "Z").getTime());
+  const minX = Math.min(...times), maxX = Math.max(...times);
+  const spanX = maxX - minX || 1;
+  const sx = (v) => padL + ((new Date(String(v).replace(" ", "T") + "Z").getTime() - minX)
+    / spanX) * (W - padL - padR);
+  const sy = (v) => padT + (1 - (v - minY) / (maxY - minY)) * (H - padT - padB);
+
+  const gridLines = [0, 0.25, 0.5, 0.75, 1].map((t) => {
+    const value = minY + (maxY - minY) * (1 - t);
+    const y = padT + t * (H - padT - padB);
+    return `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}"
+      stroke="#25394a" stroke-width="1"/>
+      <text x="${padL - 7}" y="${y + 3.5}" fill="#7f95a8" font-size="10"
+      text-anchor="end">${Math.round(value)}</text>`;
+  }).join("");
+
+  const ticks = [0, 0.5, 1].map((t) => {
+    const time = new Date(minX + spanX * t);
+    const x = padL + t * (W - padL - padR);
+    return `<text x="${x}" y="${H - 6}" fill="#7f95a8" font-size="10"
+      text-anchor="${t === 0 ? "start" : t === 1 ? "end" : "middle"}">
+      ${time.toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"})}</text>`;
+  }).join("");
+
+  const paths = seriesList.map((s) => {
+    if (!s.points.length) return "";
+    const d = s.points.map((p, idx) =>
+      (idx ? "L" : "M") + sx(p.x).toFixed(1) + " " + sy(p.y).toFixed(1)).join(" ");
+    const area = d + ` L ${sx(s.points[s.points.length - 1].x).toFixed(1)} ${H - padB}`
+      + ` L ${sx(s.points[0].x).toFixed(1)} ${H - padB} Z`;
+    return `<path d="${area}" fill="${s.color}" opacity="0.10"/>
+      <path d="${d}" fill="none" stroke="${s.color}" stroke-width="2"
+      stroke-linejoin="round" stroke-linecap="round"/>`;
+  }).join("");
+
+  const legend = seriesList.length > 1
+    ? `<div class="chartLegend">${seriesList.map((s) =>
+        `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("")}</div>`
+    : "";
+
+  return `${legend}<svg class="chart" viewBox="0 0 ${W} ${H}"
+    preserveAspectRatio="none" role="img"
+    aria-label="Andamento ${esc(unit || "")}">${gridLines}${paths}${ticks}</svg>`;
+}
+
+/* ============================================================
+   Pagina Server
+   ============================================================ */
+
+function serversPage(){
+  const list = state.servers.filter(matchesQuery);
+  return `<div class="pageToolbar">
+    <div><h2>Inventario server</h2>
+      <div class="sub">${state.servers.length} server configurati,
+        ${state.servers.filter((s) => s.enabled).length} in monitoraggio attivo</div></div>
+    <div class="toolbarControls">
+      <button class="action" data-act="collect-all">Aggiorna tutti</button>
+      <button class="add" data-act="add-server">＋ &nbsp;Aggiungi server</button>
+    </div></div>
+  <div class="panel"><div class="scrollY" style="max-height:none">
+    <div class="serverCards">${serverCards()}</div>
+    ${list.length ? `<table class="dataTable serverTable">
+      <thead><tr><th>Nome</th><th>Modello</th><th>iLO</th><th>Salute</th>
+        <th>Alimentazione</th><th>Temp max</th><th>Consumo</th><th>Eventi 24h</th>
+        <th>Ultima raccolta</th><th></th></tr></thead>
+      <tbody>${list.map((s) => {
+        const cls = s.last_collect_status === "ERROR" ? "bad"
+          : !s.enabled ? "off" : health(s.overall_health);
+        return `<tr class="serverRow" data-open="${s.id}">
+          <td><div class="serverName">${esc(s.name)}</div>
+            <div class="ip">${esc(s.ilo_ip)}${s.server_group
+              ? " · " + esc(s.server_group) : ""}</div></td>
+          <td>${esc(s.model || "—")}</td>
+          <td>${esc(s.ilo_firmware || s.ilo_version || "—")}</td>
+          <td><span class="state"><span class="stateDot ${cls === "ok" ? "" : cls}"></span>
+            ${esc(!s.enabled ? "Disabilitato"
+              : s.last_collect_status === "ERROR" ? "Errore" : (s.overall_health || "—"))}</span></td>
+          <td>${esc(s.power_state || "—")}</td>
+          <td class="${tempClass(s.max_temperature)}">${fmtInt(s.max_temperature, " °C")}</td>
+          <td>${fmtInt(s.consumed_watts, " W")}</td>
+          <td>${s.events_24h || 0}</td>
+          <td class="nowrap">${relative(s.last_collect_at)}</td>
+          <td class="nowrap rowActions">
+            <button class="iconBtn" data-console="${s.id}"
+              title="Console remota HTML5"${hasConsole(s) ? "" : " disabled"}>▶</button>
+            <button class="iconBtn" data-ilo="${s.id}" title="Apri iLO">↗</button>
+            <button class="iconBtn" data-rowmenu="${s.id}"
+              title="Accensione e riavvio">⏻</button>
+            <button class="boxLink" data-edit="${s.id}"
+              style="margin-left:8px">Modifica</button> ·
+            <button class="boxLink" data-remove="${s.id}">Rimuovi</button></td>
+        </tr>`;
+      }).join("")}</tbody></table>`
+      : `<div class="empty"><b>${state.servers.length ? "Nessun risultato"
+        : "Nessun server configurato"}</b>
+        ${state.servers.length ? "Nessun server corrisponde alla ricerca."
+          : "Aggiungi un iLO per iniziare a raccogliere dati."}</div>`}
+  </div></div>`;
+}
+
+function wireServersPage(){
+  wireRowActions();
+  // Le schede del telefono portano data-server come nella panoramica.
+  els(".serverCards [data-server]").forEach((card) => {
+    collega(card, "click", async (ev) => {
+      const d = ev.target.dataset || {};
+      if (d.console || d.ilo || d.rowmenu) return;
+      state.selectedId = Number(card.dataset.server);
+      state.tab = "overview";
+      state.detail = null;
+      await go("overview");
+    });
+  });
+  els("[data-open]").forEach((row) => {
+    collega(row, "click", async (ev) => {
+      const d = ev.target.dataset || {};
+      if (d.edit || d.remove || d.console || d.ilo || d.rowmenu) return;
+      state.selectedId = Number(row.dataset.open);
+      state.tab = "overview";
+      state.detail = null;
+      await go("overview");
+    });
+  });
+  els("[data-edit]").forEach((btn) => collega(btn, "click", (ev) => {
+    ev.stopPropagation();
+    const s = state.servers.find((x) => x.id === Number(btn.dataset.edit));
+    openServerModal(s);
+  }));
+  els("[data-remove]").forEach((btn) => collega(btn, "click", (ev) => {
+    ev.stopPropagation();
+    const s = state.servers.find((x) => x.id === Number(btn.dataset.remove));
+    openDeleteModal(s);
+  }));
+  els("[data-act='add-server']").forEach((b) =>
+    collega(b, "click", () => openServerModal(null)));
+  els("[data-act='collect-all']").forEach((b) =>
+    collega(b, "click", async () => {
+      try {
+        const r = await api("/api/collect", {method: "POST"});
+        toast(r.message || "Raccolta avviata");
+        setTimeout(() => refreshAll(true), 20000);
+      } catch (err){ toast(err.message, "err"); }
+    }));
+}
+
+/* ============================================================
+   Pagina Mappe termiche
+   ============================================================ */
+
+function heatColor(v){
+  const x = num(v);
+  if (x === null) return {bg: "#1b2a37", fg: "#8fa4b5"};
+  if (x >= state.settings.tempCrit) return {bg: "rgba(255,91,103,.30)", fg: "#ff8a92"};
+  if (x >= state.settings.tempWarn) return {bg: "rgba(255,189,61,.26)", fg: "#ffcf72"};
+  if (x >= state.settings.tempWarn * 0.7) return {bg: "rgba(25,230,161,.20)", fg: "#6ff0c4"};
+  return {bg: "rgba(69,168,255,.16)", fg: "#8ecbff"};
+}
+
+function thermalPage(data){
+  const sensors = data.sensors || [];
+  const fans = data.fans || [];
+  if (!sensors.length){
+    return `<div class="panel"><div class="empty"><b>Nessun sensore disponibile</b>
+      Esegui una raccolta dati per popolare le mappe termiche.</div></div>`;
+  }
+  const byServer = {};
+  sensors.forEach((s) => {
+    (byServer[s.server_name] = byServer[s.server_name] || []).push(s);
+  });
+  const fansByServer = {};
+  fans.forEach((f) => {
+    (fansByServer[f.server_name] = fansByServer[f.server_name] || []).push(f);
+  });
+
+  return `<div class="pageToolbar">
+    <div><h2>Mappe termiche</h2>
+      <div class="sub">${sensors.length} sensori su ${Object.keys(byServer).length} server ·
+        soglie: warning ${data.temp_warning_c} °C, critical ${data.temp_critical_c} °C</div></div>
+    <div class="chartLegend">
+      <span><i style="background:#8ecbff"></i>fresco</span>
+      <span><i style="background:#6ff0c4"></i>normale</span>
+      <span><i style="background:#ffcf72"></i>warning</span>
+      <span><i style="background:#ff8a92"></i>critical</span>
+    </div></div>
+  ${Object.entries(byServer).map(([name, list]) => {
+    const sorted = list.slice().sort(
+      (a, b) => (num(b.temperature_c) || 0) - (num(a.temperature_c) || 0));
+    const maxT = num(sorted[0].temperature_c);
+    const serverFans = fansByServer[name] || [];
+    return `<div class="panel" style="margin-bottom:14px">
+      <div class="panelHead">
+        <h2>${esc(name)} <span style="color:#7a8fa1;font-size:11px;font-weight:400">
+          ${esc(list[0].model || "")}</span></h2>
+        <div style="font-size:11px;color:var(--muted)">Massima
+          <b class="${tempClass(maxT)}" style="font-size:14px">${fmtInt(maxT, " °C")}</b>
+          <span class="sep">·</span>${serverFans.length} ventole</div>
+      </div>
+      <div style="padding:12px">
+        <div class="heatGrid">${sorted.map((x) => {
+          const c = heatColor(x.temperature_c);
+          return `<div class="heatCell" style="background:${c.bg};color:${c.fg}"
+            title="${esc(x.sensor_name)} — ${fmtInt(x.temperature_c, " °C")}">
+            <small>${esc(x.sensor_name)}</small>
+            <b>${fmtInt(x.temperature_c, "°")}</b></div>`;
+        }).join("")}</div>
+        ${serverFans.length ? `<div style="margin-top:12px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:7px">Ventole</div>
+          <div class="heatGrid">${serverFans.map((f) => {
+            const v = num(f.speed_percent) || 0;
+            const bg = v >= 80 ? "rgba(255,91,103,.24)" : v >= 60
+              ? "rgba(255,189,61,.22)" : "rgba(25,230,161,.16)";
+            const fg = v >= 80 ? "#ff8a92" : v >= 60 ? "#ffcf72" : "#6ff0c4";
+            return `<div class="heatCell" style="background:${bg};color:${fg}">
+              <small>${esc(f.fan_name || f.fan_id)}</small><b>${fmtInt(v, "%")}</b></div>`;
+          }).join("")}</div></div>` : ""}
+      </div></div>`;
+  }).join("")}`;
+}
+
+/* ============================================================
+   Pagina Eventi
+   ============================================================ */
+
+function eventsPageShell(){
+  const f = state.eventFilters;
+  return `<div class="pageToolbar">
+    <div><h2>Registro eventi</h2>
+      <div class="sub" id="eventsCount">Caricamento…</div></div>
+    <div class="toolbarControls">
+      <select class="field" id="evServer">
+        <option value="">Tutti i server</option>
+        ${state.servers.map((s) => `<option value="${s.id}"
+          ${String(f.server_id) === String(s.id) ? "selected" : ""}>${esc(s.name)}</option>`).join("")}
+      </select>
+      <select class="field" id="evSeverity">
+        <option value="all">Tutte le severità</option>
+        <option value="critical" ${f.severity === "critical" ? "selected" : ""}>Critical</option>
+        <option value="warning" ${f.severity === "warning" ? "selected" : ""}>Warning</option>
+        <option value="informational" ${f.severity === "informational" ? "selected" : ""}>Informativi</option>
+      </select>
+      <select class="field" id="evSource">
+        <option value="all">Tutti i log</option>
+      </select>
+      <select class="field" id="evHours">
+        <option value="24" ${f.hours == 24 ? "selected" : ""}>Ultime 24 ore</option>
+        <option value="168" ${f.hours == 168 ? "selected" : ""}>Ultimi 7 giorni</option>
+        <option value="720" ${f.hours == 720 ? "selected" : ""}>Ultimi 30 giorni</option>
+        <option value="8760" ${f.hours == 8760 ? "selected" : ""}>Ultimo anno</option>
+      </select>
+    </div></div>
+  <div class="panel"><div class="scrollY" style="max-height:none" id="eventsBody">
+    <div class="empty">Caricamento eventi…</div></div></div>`;
+}
+
+function wireEventsPage(){
+  loadEventSources();
+  ["evServer", "evSeverity", "evSource", "evHours"].forEach((id) => {
+    const node = $(id);
+    if (node) collega(node, "change", () => {
+      state.eventFilters.server_id = $("evServer").value;
+      state.eventFilters.severity = $("evSeverity").value;
+      state.eventFilters.source = $("evSource").value;
+      state.eventFilters.hours = Number($("evHours").value);
+      reloadEvents();
+    });
+  });
+}
+
+// Etichette dei log noti; quelli non previsti restano col loro
+// codice, che e' comunque parlante.
+const LOG_LABELS = {
+  IML: "IML — eventi hardware",
+  IEL: "IEL — accessi e iLO",
+  SL: "SL — sicurezza",
+  EVENT: "EVENT — servizio eventi",
+  AHS: "AHS — Active Health System"
+};
+
+async function loadEventSources(){
+  const select = $("evSource");
+  if (!select) return;
+  try {
+    const rows = await apiData("/api/event-sources");
+    const f = state.eventFilters;
+    select.innerHTML = '<option value="all">Tutti i log</option>'
+      + rows.map((r) => `<option value="${esc(r.log_source)}"
+          ${f.source === r.log_source ? "selected" : ""}>
+          ${esc(LOG_LABELS[r.log_source] || r.log_source)}
+          (${r.total})</option>`).join("");
+  } catch (err){ /* resta il solo "Tutti i log" */ }
+}
+
+async function reloadEvents(){
+  const body = $("eventsBody");
+  if (!body) return;
+  const f = state.eventFilters;
+  const params = new URLSearchParams({
+    hours: f.hours, severity: f.severity, source: f.source, limit: 500
+  });
+  if (f.server_id) params.set("server_id", f.server_id);
+  if (state.query) params.set("q", state.query);
+  try {
+    const rows = await apiData("/api/events?" + params.toString());
+    const counter = $("eventsCount");
+    if (counter) counter.textContent = rows.length
+      + (rows.length === 500 ? " eventi (limite raggiunto)" : " eventi nel periodo selezionato");
+    body.innerHTML = rows.length ? `<table class="dataTable">
+      <thead><tr><th>Data/Ora</th><th>Server</th><th>Log</th><th>Severità</th>
+        <th>ID messaggio</th><th>Messaggio</th></tr></thead>
+      <tbody>${rows.map((e) => `<tr>
+        <td class="nowrap">${dateLabel(e.event_created)}</td>
+        <td>${esc(e.server_name)}<div class="ip">${esc(e.ilo_ip)}</div></td>
+        <td class="nowrap">${esc(e.log_source || "—")}</td>
+        <td class="${severityClass(e.severity)} nowrap">${severityIcon(e.severity)}
+          ${esc(e.severity || "Informativo")}</td>
+        <td class="nowrap">${esc(e.message_id || "—")}</td>
+        <td>${esc(e.message || "")}</td></tr>`).join("")}</tbody></table>`
+      : `<div class="empty"><b>Nessun evento</b>
+        Nessun evento corrisponde ai filtri selezionati.</div>`;
+  } catch (err){
+    body.innerHTML = `<div class="empty"><b>Caricamento non riuscito</b>
+      ${esc(err.message)}</div>`;
+  }
+}
+
+/* ============================================================
+   Pagina Report
+   ============================================================ */
+
+const CHART_COLORS = ["#45a8ff", "#19e6a1", "#ffbd3d", "#a77cff", "#ff5b67",
+  "#5ad1c8", "#f08bd0", "#9fd356"];
+
+function buildSeries(rows, valueKey, servers){
+  const byServer = {};
+  rows.forEach((r) => {
+    (byServer[r.server_id] = byServer[r.server_id] || []).push(
+      {x: r.bucket, y: num(r[valueKey])});
+  });
+  return Object.entries(byServer).map(([id, points], idx) => {
+    const server = servers.find((s) => String(s.id) === String(id));
+    return {
+      name: server ? server.name : ("Server " + id),
+      color: CHART_COLORS[idx % CHART_COLORS.length],
+      points: points.filter((p) => p.y !== null)
+    };
+  }).filter((s) => s.points.length);
+}
+
+function reportsPage(data){
+  const servers = data.servers || [];
+  const powerSeries = buildSeries(data.power || [], "watts", servers);
+  const tempSeries = buildSeries(data.temperature || [], "temp", servers);
+  const cpuSeries = buildSeries(data.cpu || [], "cpu", servers);
+  const totals = data.totals || [];
+  const grandAvg = totals.reduce((a, t) => a + (num(t.avg_watts) || 0), 0);
+
+  return `<div class="pageToolbar">
+    <div><h2>Report</h2>
+      <div class="sub">Dati aggregati su ${servers.length} server ·
+        consumo medio complessivo ${fmtInt(grandAvg, " W")}</div></div>
+    <div class="toolbarControls">
+      <select class="field" id="reportHours">
+        <option value="24" ${state.reportHours == 24 ? "selected" : ""}>Ultime 24 ore</option>
+        <option value="168" ${state.reportHours == 168 ? "selected" : ""}>Ultimi 7 giorni</option>
+        <option value="720" ${state.reportHours == 720 ? "selected" : ""}>Ultimi 30 giorni</option>
+      </select>
+      <button class="action" id="exportCsv">Esporta CSV</button>
+    </div></div>
+
+  <div class="grid2">
+    <div class="box"><div class="boxHead">Consumo elettrico (W)</div>
+      <div class="boxBody">${powerSeries.length ? lineChart(powerSeries, "W", 200)
+        : emptyBox("Nessuna rilevazione nel periodo.")}</div></div>
+    <div class="box"><div class="boxHead">Temperatura massima (°C)</div>
+      <div class="boxBody">${tempSeries.length ? lineChart(tempSeries, "°C", 200)
+        : emptyBox("Nessuna rilevazione nel periodo.")}</div></div>
+  </div>
+
+  <div class="grid2" style="margin-top:12px">
+    <div class="box"><div class="boxHead">Utilizzo CPU (%)</div>
+      <div class="boxBody">${cpuSeries.length ? lineChart(cpuSeries, "%", 200)
+        : emptyBox("iLO non ha riportato l'utilizzo CPU nel periodo.")}</div></div>
+    <div class="box"><div class="boxHead">Eventi per giorno</div>
+      <div class="boxBody flush">${(data.events_by_day || []).length ? `<table class="dataTable">
+        <thead><tr><th>Giorno</th><th>Totali</th><th>Warning</th><th>Critical</th></tr></thead>
+        <tbody>${(data.events_by_day || []).slice().reverse().map((d) => `<tr>
+          <td>${esc(d.day)}</td><td>${d.total}</td>
+          <td class="sevWarn">${d.warning || 0}</td>
+          <td class="sevBad">${d.critical || 0}</td></tr>`).join("")}</tbody></table>`
+        : emptyBox("Nessun evento nel periodo.")}</div></div>
+  </div>
+
+  <div class="box fullPanel"><div class="boxHead">Riepilogo consumi per server</div>
+    <div class="boxBody flush">${totals.length ? `<table class="dataTable">
+      <thead><tr><th>Server</th><th>Consumo medio</th><th>Minimo</th><th>Massimo</th>
+        <th>Rilevazioni</th><th>Stima mensile</th></tr></thead>
+      <tbody>${totals.map((t) => {
+        const avg = num(t.avg_watts);
+        const kwh = avg === null ? null : (avg * 24 * 30) / 1000;
+        return `<tr><td>${esc(t.name)}</td>
+          <td>${fmtInt(t.avg_watts, " W")}</td>
+          <td>${fmtInt(t.min_watts, " W")}</td>
+          <td>${fmtInt(t.max_watts, " W")}</td>
+          <td>${t.samples || 0}</td>
+          <td>${kwh === null ? "—" : Math.round(kwh) + " kWh"}</td></tr>`;
+      }).join("")}</tbody></table>` : emptyBox("Nessun dato nel periodo.")}</div></div>`;
+}
+
+function wireReportsPage(){
+  const select = $("reportHours");
+  if (select) collega(select, "change", () => {
+    state.reportHours = Number(select.value);
+    render();
+  });
+  const btn = $("exportCsv");
+  if (btn) collega(btn, "click", exportCsv);
+}
+
+async function exportCsv(){
+  try {
+    const data = await apiData("/api/reports?hours=" + state.reportHours);
+    const lines = ["server;consumo_medio_W;minimo_W;massimo_W;rilevazioni"];
+    (data.totals || []).forEach((t) => {
+      lines.push([t.name, Math.round(num(t.avg_watts) || 0),
+        Math.round(num(t.min_watts) || 0), Math.round(num(t.max_watts) || 0),
+        t.samples || 0].join(";"));
+    });
+    const blob = new Blob(["\ufeff" + lines.join("\n")],
+      {type: "text/csv;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "ilo-monitor-consumi-" + state.reportHours + "h.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err){ toast("Esportazione non riuscita: " + err.message, "err"); }
+}
+
+/* ============================================================
+   Pagina Avvisi email
+   ============================================================ */
+
+const CATEGORIE_AVVISO = [
+  ["cat_storage", "Storage"], ["cat_fans", "Ventole"],
+  ["cat_thermal", "Temperature"], ["cat_power", "Alimentazione"],
+  ["cat_memory", "Memoria"], ["cat_cpu", "Processori"],
+  ["cat_network", "Rete"], ["cat_other", "Altro"]
+];
+
+const CONTROLLI_STATO = [
+  ["alert_temperature", "Soglie di temperatura superate"],
+  ["alert_drives", "Dischi con guasto previsto o vita bassa"],
+  ["alert_psu_fans", "Alimentatore o ventola in avaria"],
+  ["alert_unreachable", "Server che non risponde alla raccolta"]
+];
+
+function alertsPage(data){
+  const m = data.smtp || {};
+  const attivo = String(m.smtp_enabled) === "1";
+  const regole = data.rules || [];
+
+  return `<div class="pageToolbar">
+    <div><h2>Avvisi email</h2>
+      <div class="sub">${attivo
+        ? "Invio attivo: le email partono appena l'evento viene rilevato"
+        : "Invio disattivato: nessuna email verrà spedita"}</div></div>
+  </div>
+
+  <div class="box"><div class="boxHead">Server di posta (SMTP)</div>
+    <div class="boxBody">
+      <div class="formGrid" style="padding:0;gap:12px">
+        <label class="wide">
+          <div class="switch"><input type="checkbox" id="smtpEnabled"
+            ${attivo ? "checked" : ""}>
+            <span>Invia avvisi via email</span></div></label>
+
+        <label>Server SMTP
+          <input class="field" id="smtpHost" placeholder="smtp.dominio.it"
+            value="${esc(m.smtp_host || "")}"></label>
+        <label>Porta
+          <input class="field" type="number" id="smtpPort" min="1" max="65535"
+            value="${esc(m.smtp_port || 587)}">
+          <div class="hint">587 con STARTTLS, 465 con SSL diretto,
+            25 senza cifratura.</div></label>
+
+        <label>Cifratura
+          <select class="field" id="smtpSecurity">
+            <option value="starttls" ${m.smtp_security === "starttls" ? "selected" : ""}>STARTTLS</option>
+            <option value="ssl" ${m.smtp_security === "ssl" ? "selected" : ""}>SSL/TLS diretto</option>
+            <option value="none" ${m.smtp_security === "none" ? "selected" : ""}>Nessuna</option>
+          </select></label>
+        <label>Utente
+          <input class="field" id="smtpUser" autocomplete="off"
+            value="${esc(m.smtp_user || "")}"></label>
+
+        <label>Password
+          <input class="field" type="password" id="smtpPassword"
+            autocomplete="new-password"
+            placeholder="${m.has_password ? "già salvata, lascia vuoto per non cambiarla" : ""}">
+        </label>
+        <label>Mittente
+          <input class="field" id="smtpFrom" placeholder="ilo@dominio.it"
+            value="${esc(m.smtp_from || "")}">
+          <div class="hint">Se vuoto viene usato l'utente.</div></label>
+
+        <label class="wide">Destinatario
+          <input class="field" id="smtpTo" placeholder="tecnico@dominio.it"
+            value="${esc(m.smtp_to || "")}">
+          <div class="hint">Più indirizzi separati da virgola.</div></label>
+
+        <label class="wide">Massimo segnalazioni per email
+          <input class="field" type="number" id="alertMax" min="1" max="100"
+            value="${esc(m.alert_max_per_run || 10)}">
+          <div class="hint">Oltre questo numero l'email riporta le prime e
+            rimanda alla pagina Eventi: evita messaggi lunghissimi quando
+            un server ha molte segnalazioni insieme.</div></label>
+      </div>
+      <div class="modalActions" style="padding:14px 0 0">
+        <button class="action" id="testEmail">Invia messaggio di prova</button>
+        <button class="add" id="saveSmtp">Salva configurazione</button>
+      </div>
+      <div class="formMessage" id="smtpMsg" style="padding:0"></div>
+    </div></div>
+
+  <div class="box fullPanel"><div class="boxHead">Cosa segnalare, server per server
+    <span class="boxLink">${regole.length} server</span></div>
+    <div class="boxBody flush">
+      ${regole.length ? regole.map((r) => regolaServer(r)).join("")
+        : emptyBox("Nessun server configurato.")}
+    </div></div>
+
+  <div class="box fullPanel"><div class="boxHead">Ultime email</div>
+    <div class="boxBody flush">${(data.recent || []).length
+      ? `<table class="dataTable">
+        <thead><tr><th>Data/Ora</th><th>Server</th><th>Oggetto</th>
+          <th>Destinatari</th><th>Esito</th></tr></thead>
+        <tbody>${(data.recent || []).map((x) => `<tr>
+          <td class="nowrap">${dateLabel(x.sent_at)}</td>
+          <td>${esc(x.server_name || "—")}</td>
+          <td>${esc(x.subject || "")}</td>
+          <td>${esc(x.recipients || "")}</td>
+          <td class="${x.status === "SENT" ? "statusOk" : "statusBad"}"
+            title="${esc(x.error_message || "")}">${esc(x.status)}</td>
+        </tr>`).join("")}</tbody></table>`
+      : emptyBox("Nessuna email inviata finora.")}</div></div>`;
+}
+
+function regolaServer(r){
+  return `<div class="alertRule" data-rule="${r.server_id}">
+    <div class="alertHead">
+      <div>
+        <div class="serverName" style="font-size:13px">${esc(r.name)}</div>
+        <div class="ip">${esc(r.ilo_ip)} · ${esc(shortModel(r.model) || "—")}</div>
+      </div>
+      <div class="switch" style="margin:0">
+        <input type="checkbox" data-f="enabled" ${r.enabled ? "checked" : ""}>
+        <span>Attivo</span></div>
+    </div>
+    <div class="alertBody">
+      <div>
+        <div class="alertLabel">Gravità minima degli eventi</div>
+        <select class="field" data-sev style="width:100%">
+          <option value="Critical" ${r.min_severity === "Critical" ? "selected" : ""}>Solo critici</option>
+          <option value="Warning" ${r.min_severity === "Warning" ? "selected" : ""}>Critici e warning</option>
+          <option value="Informational" ${r.min_severity === "Informational" ? "selected" : ""}>Tutti, informativi inclusi</option>
+        </select>
+      </div>
+      <div>
+        <div class="alertLabel">Categorie di evento</div>
+        <div class="checkGrid">${CATEGORIE_AVVISO.map(([k, etichetta]) =>
+          `<label class="checkItem"><input type="checkbox" data-f="${k}"
+            ${r[k] ? "checked" : ""}> ${etichetta}</label>`).join("")}</div>
+      </div>
+      <div>
+        <div class="alertLabel">Controlli sullo stato dei componenti</div>
+        <div class="checkGrid">${CONTROLLI_STATO.map(([k, etichetta]) =>
+          `<label class="checkItem"><input type="checkbox" data-f="${k}"
+            ${r[k] ? "checked" : ""}> ${etichetta}</label>`).join("")}</div>
+      </div>
+    </div>
+    <div class="alertFoot">
+      <span class="hint" data-msg></span>
+      <span>
+        <button class="action" data-all>Applica a tutti i server</button>
+        <button class="add" data-save>Salva</button>
+      </span>
+    </div>
+  </div>`;
+}
+
+function wireAlertsPage(){
+  const msg = $("smtpMsg");
+
+  function datiSmtp(){
+    const d = {
+      smtp_enabled: $("smtpEnabled").checked ? 1 : 0,
+      smtp_host: $("smtpHost").value.trim(),
+      smtp_port: Number($("smtpPort").value),
+      smtp_security: $("smtpSecurity").value,
+      smtp_user: $("smtpUser").value.trim(),
+      smtp_from: $("smtpFrom").value.trim(),
+      smtp_to: $("smtpTo").value.trim(),
+      alert_max_per_run: Number($("alertMax").value)
+    };
+    if ($("smtpPassword").value) d.smtp_password = $("smtpPassword").value;
+    return d;
+  }
+
+  async function salvaSmtp(){
+    await api("/api/alerts/smtp", {method: "PUT", body: datiSmtp()});
+    $("smtpPassword").value = "";
+  }
+
+  collega($("saveSmtp"), "click", async () => {
+    msg.className = "formMessage";
+    msg.textContent = "Salvataggio…";
+    try {
+      await salvaSmtp();
+      msg.className = "formMessage ok";
+      msg.innerHTML = "<b>✓ Configurazione salvata</b>";
+      toast("Configurazione email salvata");
+    } catch (err){
+      msg.className = "formMessage err";
+      msg.innerHTML = "<b>✕ Salvataggio non riuscito</b><br>" + esc(err.message);
+    }
+  });
+
+  const bottoneTest = $("testEmail");
+
+  function esito(ok, titolo, dettaglio){
+    msg.className = "formMessage " + (ok ? "ok" : "err");
+    msg.innerHTML = `<b>${ok ? "✓" : "✕"} ${esc(titolo)}</b>`
+      + (dettaglio ? "<br>" + esc(dettaglio) : "");
+    bottoneTest.textContent = "Invia messaggio di prova";
+    bottoneTest.disabled = false;
+  }
+
+  collega(bottoneTest, "click", async () => {
+    // Controlli qui, prima di disturbare il server: dicono subito
+    // cosa manca invece di far attendere un errore SMTP.
+    const mancanti = [];
+    if (!$("smtpHost").value.trim()) mancanti.push("il server SMTP");
+    if (!$("smtpTo").value.trim()) mancanti.push("il destinatario");
+    if (mancanti.length){
+      esito(false, "Test fallito",
+        "Manca " + mancanti.join(" e ") + ".");
+      return;
+    }
+    const destinatario = $("smtpTo").value.trim();
+    if (!/^[^@\s,]+@[^@\s,]+\.[^@\s,]+/.test(destinatario)){
+      esito(false, "Test fallito",
+        "L'indirizzo del destinatario non sembra valido.");
+      return;
+    }
+
+    bottoneTest.disabled = true;
+    bottoneTest.textContent = "Invio in corso…";
+    msg.className = "formMessage";
+    msg.textContent = "Salvo la configurazione e provo l'invio…";
+
+    try {
+      // Salviamo prima: altrimenti la prova userebbe i valori
+      // precedenti e il risultato non direbbe nulla su quelli
+      // appena digitati.
+      await salvaSmtp();
+      const r = await api("/api/alerts/test", {method: "POST"});
+      if (r.ok){
+        esito(true, "Test effettuato con successo", r.message);
+        toast("Messaggio di prova inviato");
+      } else {
+        esito(false, "Test fallito", r.error);
+      }
+    } catch (err){
+      esito(false, "Test fallito", err.message);
+    }
+    // Volutamente nessun ridisegno della pagina: cancellerebbe
+    // quello che c'e' nei campi.
+  });
+
+  els("[data-rule]").forEach((riquadro) => {
+    const id = riquadro.dataset.rule;
+    const nota = el("[data-msg]", riquadro);
+
+    const corpo = () => {
+      const body = {min_severity: el("[data-sev]", riquadro).value};
+      els("[data-f]", riquadro).forEach((c) => {
+        body[c.dataset.f] = c.checked;
+      });
+      return body;
+    };
+
+    async function salva(tutti){
+      const body = corpo();
+      if (tutti) body.apply_to_all = true;
+      nota.textContent = "Salvataggio…";
+      try {
+        const r = await api("/api/alerts/rules/" + id,
+          {method: "PUT", body});
+        nota.textContent = r.message || "Salvato.";
+        toast(r.message || "Impostazioni salvate");
+        if (tutti) render();
+      } catch (err){
+        nota.textContent = err.message;
+      }
+    }
+
+    collega(el("[data-save]", riquadro), "click", () => salva(false));
+    collega(el("[data-all]", riquadro), "click", () => {
+      if (confirm("Applicare queste impostazioni a tutti i server?")) salva(true);
+    });
+  });
+}
+
+/* ============================================================
+   Pagina Impostazioni
+   ============================================================ */
+
+function settingsPage(data){
+  const s = data.settings || {};
+  const c = data.counts || {};
+  return `<div class="pageToolbar">
+    <div><h2>Impostazioni</h2>
+      <div class="sub">Soglie di allarme, frequenza di raccolta e manutenzione dati</div></div>
+  </div>
+  <div class="grid2">
+    <div class="box"><div class="boxHead">Soglie e raccolta</div>
+      <div class="boxBody">
+        <div class="formGrid" style="padding:0;gap:12px">
+          <label>Soglia warning (°C)
+            <input class="field" type="number" id="setWarn" min="20" max="120"
+              value="${esc(s.temp_warning_c || 55)}"></label>
+          <label>Soglia critical (°C)
+            <input class="field" type="number" id="setCrit" min="20" max="140"
+              value="${esc(s.temp_critical_c || 70)}"></label>
+          <label>Intervallo raccolta (minuti)
+            <input class="field" type="number" id="setInterval" min="1" max="1440"
+              value="${esc(s.collect_interval_minutes || 5)}">
+            <div class="hint">Applicato dal timer systemd: dopo il salvataggio
+              esegui <code>ilo-monitor-interval</code> oppure modifica
+              ilo-monitor-collector.timer.</div></label>
+          <label>Rilettura inventario e log (minuti)
+            <input class="field" type="number" id="setInventory" min="5" max="1440"
+              value="${esc(s.inventory_interval_minutes || 60)}">
+            <div class="hint">CPU, memoria, dischi, rete e log cambiano di rado
+              e costano quasi tutte le richieste agli iLO: si rileggono a
+              questa cadenza, non a ogni raccolta.</div></label>
+          <label>Aggiornamento pagina (secondi)
+            <input class="field" type="number" id="setRefresh" min="10" max="600"
+              value="${esc(s.ui_refresh_seconds || 45)}"></label>
+          <label class="wide">Eventi di accesso all'iLO
+            <div class="switch"><input type="checkbox" id="setIgnoreLogin"
+              ${String(s.ignore_login_events ?? "1") !== "0" ? "checked" : ""}>
+              <span>Non archiviare i "Browser login/logout" generati dal
+                monitoraggio</span></div>
+            <div class="hint">L'iLO registra un accesso a ogni sessione e non
+              esiste un'impostazione per disattivarlo: si possono solo
+              scartare in ingresso. Restano comunque nel log dell'iLO.</div>
+          </label>
+          <label class="wide">Conservazione dati (giorni)
+            <input class="field" type="number" id="setRetention" min="1" max="3650"
+              value="${esc(s.retention_days || 90)}">
+            <div class="hint">Le rilevazioni più vecchie vengono eliminate a fine raccolta.
+              Gli eventi iLO non vengono mai cancellati.</div></label>
+        </div>
+        <div class="modalActions" style="padding:14px 0 0">
+          <button class="action" id="purgeLoginBtn">Rimuovi accessi archiviati</button>
+          <button class="action" id="purgeBtn">Pulisci storico adesso</button>
+          <button class="add" id="saveSettings">Salva impostazioni</button>
+        </div>
+        <div class="formMessage" id="settingsMsg" style="padding:0"></div>
+      </div></div>
+
+    <div class="box"><div class="boxHead">Cambia password</div>
+      <div class="boxBody">
+        <div class="formGrid" style="padding:0;gap:12px">
+          <label class="wide">Password attuale
+            <input class="field" type="password" id="pwCurrent"
+              autocomplete="current-password"></label>
+          <label class="wide">Nuova password
+            <input class="field" type="password" id="pwNew"
+              autocomplete="new-password">
+            <div class="hint">Almeno 10 caratteri, con almeno tre fra
+              minuscole, maiuscole, cifre e simboli.</div></label>
+          <label class="wide">Ripeti la nuova password
+            <input class="field" type="password" id="pwRepeat"
+              autocomplete="new-password"></label>
+        </div>
+        <div class="modalActions" style="padding:14px 0 0">
+          <button class="add" id="savePassword">Cambia password</button>
+        </div>
+        <div class="formMessage" id="pwMsg" style="padding:0"></div>
+      </div></div>
+
+    <div class="box"><div class="boxHead">Stato del sistema</div>
+      <div class="boxBody"><table class="infoTable">
+        <tr><td>API</td><td class="statusOk" id="apiStatus">attiva</td></tr>
+        <tr><td>Database</td><td>${esc(data.database || "—")}</td></tr>
+        <tr><td>Server configurati</td><td>${c.servers ?? 0}
+          (${c.servers_enabled ?? 0} attivi)</td></tr>
+        <tr><td>Eventi archiviati</td><td>${c.events ?? 0}</td></tr>
+        <tr><td>Rilevazioni archiviate</td><td>${c.metrics ?? 0}</td></tr>
+        <tr><td>Dato più vecchio</td><td>${dateLabel(c.oldest_metric)}</td></tr>
+      </table>
+      <div class="modalActions" style="padding:14px 0 0">
+        <button class="action" id="collectAllBtn">Avvia raccolta di tutti i server</button>
+      </div></div></div>
+  </div>
+
+  <div class="box fullPanel"><div class="boxHead">Ultime esecuzioni del collector</div>
+    <div class="boxBody flush">${(data.runs || []).length ? `<table class="dataTable">
+      <thead><tr><th>Server</th><th>Avvio</th><th>Fine</th><th>Esito</th><th>Errore</th></tr></thead>
+      <tbody>${(data.runs || []).map((r) => `<tr>
+        <td>${esc(r.server_name)}</td>
+        <td class="nowrap">${dateLabel(r.started_at)}</td>
+        <td class="nowrap">${r.finished_at ? dateLabel(r.finished_at) : "in corso"}</td>
+        <td class="${r.status === "OK" ? "statusOk"
+          : r.status === "ERROR" ? "statusBad" : "statusWarn"}">${esc(r.status)}</td>
+        <td>${esc(r.error_message || "—")}</td></tr>`).join("")}</tbody></table>`
+      : emptyBox("Il collector non è ancora stato eseguito.")}</div></div>`;
+}
+
+function wireSettingsPage(){
+  const msg = $("settingsMsg");
+  collega($("saveSettings"), "click", async () => {
+    msg.className = "formMessage";
+    msg.textContent = "Salvataggio…";
+    try {
+      const body = {
+        temp_warning_c: Number($("setWarn").value),
+        temp_critical_c: Number($("setCrit").value),
+        collect_interval_minutes: Number($("setInterval").value),
+        ui_refresh_seconds: Number($("setRefresh").value),
+        retention_days: Number($("setRetention").value),
+        ignore_login_events: $("setIgnoreLogin").checked ? 1 : 0,
+        inventory_interval_minutes: Number($("setInventory").value)
+      };
+      if (body.temp_warning_c >= body.temp_critical_c){
+        msg.className = "formMessage err";
+        msg.textContent = "La soglia warning deve essere inferiore alla soglia critical.";
+        return;
+      }
+      await api("/api/settings", {method: "PUT", body});
+      state.settings.tempWarn = body.temp_warning_c;
+      state.settings.tempCrit = body.temp_critical_c;
+      state.settings.refresh = body.ui_refresh_seconds;
+      state.countdown = body.ui_refresh_seconds;
+      msg.className = "formMessage ok";
+      msg.textContent = "Impostazioni salvate.";
+      toast("Impostazioni salvate");
+    } catch (err){
+      msg.className = "formMessage err";
+      msg.textContent = "Salvataggio non riuscito: " + err.message;
+    }
+  });
+  const pwMsg = $("pwMsg");
+  collega($("savePassword"), "click", async () => {
+    pwMsg.className = "formMessage";
+    if ($("pwNew").value !== $("pwRepeat").value){
+      pwMsg.className = "formMessage err";
+      pwMsg.textContent = "Le due nuove password non coincidono.";
+      return;
+    }
+    pwMsg.textContent = "Salvataggio…";
+    try {
+      await api("/api/change-password", {method: "POST", body: {
+        current_password: $("pwCurrent").value,
+        new_password: $("pwNew").value
+      }});
+      ["pwCurrent", "pwNew", "pwRepeat"].forEach((id) => { $(id).value = ""; });
+      pwMsg.className = "formMessage ok";
+      pwMsg.textContent = "Password aggiornata. Le altre sessioni aperte "
+        + "sono state chiuse.";
+      toast("Password aggiornata");
+    } catch (err){
+      pwMsg.className = "formMessage err";
+      pwMsg.textContent = err.message;
+    }
+  });
+  collega($("purgeLoginBtn"), "click", async () => {
+    if (!confirm("Rimuovere dall'archivio gli eventi di accesso all'iLO "
+      + "gia' salvati? Restano comunque nel log dell'iLO.")) return;
+    try {
+      const r = await api("/api/maintenance/purge-login-events",
+        {method: "POST"});
+      toast(r.message || "Eventi rimossi");
+      render();
+    } catch (err){ toast(err.message, "err"); }
+  });
+  collega($("purgeBtn"), "click", async () => {
+    if (!confirm("Eliminare le rilevazioni oltre il periodo di conservazione?")) return;
+    try {
+      await api("/api/maintenance/purge", {method: "POST"});
+      toast("Pulizia dello storico avviata");
+    } catch (err){ toast(err.message, "err"); }
+  });
+  collega($("collectAllBtn"), "click", async () => {
+    try {
+      const r = await api("/api/collect", {method: "POST"});
+      toast(r.message || "Raccolta avviata");
+      setTimeout(() => refreshAll(true), 20000);
+    } catch (err){ toast(err.message, "err"); }
+  });
+}
+
+/* ============================================================
+   Modali: aggiunta, modifica, rimozione server
+   ============================================================ */
+
+function closeModal(){ $("modalRoot").innerHTML = ""; }
+
+function openServerModal(server){
+  const editing = Boolean(server);
+  $("modalRoot").innerHTML = `
+  <div class="modal" id="serverModal">
+    <div class="modalCard">
+      <div class="modalHead">
+        <div><h2>${editing ? "Modifica server" : "Aggiungi server"}</h2>
+          <p>${editing
+            ? "Le credenziali vengono riverificate se cambi indirizzo, utente o password."
+            : "Inserisci i dati dell'iLO. La connessione viene provata prima del salvataggio."}</p></div>
+        <button class="modalClose" id="modalCloseBtn">×</button>
+      </div>
+      <form id="serverForm">
+        <div class="formGrid">
+          <label>Nome server
+            <input name="name" maxlength="150"
+              placeholder="${editing ? "" : "rilevato dall'iLO"}"
+              value="${esc(server ? server.name : "")}">
+            <div class="hint">${editing
+              ? "Svuota il campo per tornare all'hostname riportato dall'iLO."
+              : "Facoltativo: se lo lasci vuoto viene usato l'hostname dell'iLO."}</div>
+          </label>
+          <label>Indirizzo IP iLO
+            <input name="ilo_ip" required maxlength="45" placeholder="192.168.1.100"
+              value="${esc(server ? server.ilo_ip : "")}"></label>
+          <label>Utente iLO
+            <input name="ilo_user" required maxlength="150"
+              value="${esc(server ? server.ilo_user : "Administrator")}"></label>
+          <label>Password iLO
+            <input name="ilo_password" type="password"
+              placeholder="${editing ? "lascia vuoto per non modificarla" : ""}"
+              ${editing ? "" : "required"} autocomplete="new-password">
+            ${editing ? '<div class="hint">La password attuale resta valida se lasci il campo vuoto.</div>' : ""}
+          </label>
+          <label>Gruppo (facoltativo)
+            <input name="server_group" maxlength="100" placeholder="Sede principale"
+              value="${esc(server && server.server_group ? server.server_group : "")}"></label>
+          <label>Monitoraggio
+            <div class="switch"><input type="checkbox" name="enabled"
+              ${!server || server.enabled ? "checked" : ""}>
+              <span>Includi questo server nelle raccolte automatiche</span></div></label>
+          <label class="wide">Note (facoltativo)
+            <textarea name="notes" maxlength="2000"
+              placeholder="Posizione nel rack, contatto, contratto di assistenza…"
+              >${esc(server && server.notes ? server.notes : "")}</textarea></label>
+        </div>
+        <div class="formMessage" id="serverFormMsg"></div>
+        <div class="modalActions">
+          <button type="button" class="action left" id="testBtn">Prova connessione</button>
+          <button type="button" class="action" id="cancelBtn">Annulla</button>
+          <button type="submit" class="action green" id="submitBtn">
+            ${editing ? "Salva modifiche" : "Aggiungi e monitora"}</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+
+  const form = $("serverForm");
+  const msg = $("serverFormMsg");
+  const submitBtn = $("submitBtn");
+
+  const readForm = () => {
+    const data = Object.fromEntries(new FormData(form).entries());
+    data.enabled = form.querySelector("[name=enabled]").checked;
+    return data;
+  };
+
+  collega($("modalCloseBtn"), "click", closeModal);
+  collega($("cancelBtn"), "click", closeModal);
+  collega($("serverModal"), "click", (ev) => {
+    if (ev.target.id === "serverModal") closeModal();
+  });
+
+  collega($("testBtn"), "click", async () => {
+    const data = readForm();
+    if (!data.ilo_ip){
+      msg.className = "formMessage err";
+      msg.textContent = "Indica l'indirizzo IP dell'iLO.";
+      return;
+    }
+    msg.className = "formMessage";
+    msg.textContent = "Connessione in corso…";
+    try {
+      const body = {ilo_ip: data.ilo_ip, ilo_user: data.ilo_user};
+      if (data.ilo_password) body.ilo_password = data.ilo_password;
+      else if (editing) body.server_id = server.id;
+      const r = await api("/api/servers/test", {method: "POST", body});
+      if (r.ok){
+        const d = r.data;
+        msg.className = "formMessage ok";
+        msg.textContent = `Connessione riuscita: ${d.model || "server"}`
+          + ` · SN ${d.serial_number || "—"} · ${d.ilo_version || "iLO"}`
+          + ` · salute ${d.overall_health || "—"}`;
+        if (!form.name.value && d.hostname) form.name.value = d.hostname;
+      } else {
+        msg.className = "formMessage err";
+        msg.textContent = "Connessione non riuscita: " + r.error;
+      }
+    } catch (err){
+      msg.className = "formMessage err";
+      msg.textContent = "Connessione non riuscita: " + err.message;
+    }
+  });
+
+  collega(form, "submit", async (ev) => {
+    ev.preventDefault();
+    const data = readForm();
+    msg.className = "formMessage";
+    msg.textContent = editing ? "Salvataggio…"
+      : "Verifica delle credenziali e salvataggio…";
+    submitBtn.disabled = true;
+    try {
+      if (editing){
+        const body = {
+          name: data.name, ilo_ip: data.ilo_ip, ilo_user: data.ilo_user,
+          server_group: data.server_group || "", notes: data.notes || "",
+          enabled: data.enabled
+        };
+        if (data.ilo_password) body.ilo_password = data.ilo_password;
+        await api("/api/servers/" + server.id, {method: "PUT", body});
+        toast(data.name + " aggiornato");
+      } else {
+        const r = await api("/api/servers", {method: "POST", body: {
+          name: (data.name || "").trim() || null,
+          ilo_ip: data.ilo_ip, ilo_user: data.ilo_user,
+          ilo_password: data.ilo_password, server_group: data.server_group || null,
+          notes: data.notes || null, enabled: data.enabled
+        }});
+        state.selectedId = r.id;
+        state.detail = null;
+        toast(r.message || "Server aggiunto");
+        // La prima raccolta gira in background: ricarichiamo tra poco.
+        setTimeout(() => refreshAll(true), 15000);
+      }
+      closeModal();
+      await refreshAll(true);
+    } catch (err){
+      msg.className = "formMessage err";
+      msg.textContent = err.message;
+      submitBtn.disabled = false;
+    }
+  });
+
+  // In aggiunta il campo che conta e' l'indirizzo: il nome puo'
+  // arrivare dall'iLO.
+  const first = form.querySelector(
+    editing ? "input[name=name]" : "input[name=ilo_ip]");
+  if (first) first.focus();
+}
+
+function openDeleteModal(server){
+  $("modalRoot").innerHTML = `
+  <div class="modal" id="deleteModal">
+    <div class="modalCard" style="width:min(480px,96vw)">
+      <div class="modalHead">
+        <div><h2>Rimuovere ${esc(server.name)}?</h2>
+          <p>Verranno eliminati anche tutte le rilevazioni e gli eventi
+             archiviati per questo server. L'operazione non è reversibile.</p></div>
+        <button class="modalClose" id="delClose">×</button>
+      </div>
+      <div class="formGrid">
+        <label class="wide">Scrivi il nome del server per confermare
+          <input id="delConfirm" placeholder="${esc(server.name)}" autocomplete="off"></label>
+      </div>
+      <div class="formMessage" id="delMsg"></div>
+      <div class="modalActions">
+        <button class="action" id="delCancel">Annulla</button>
+        <button class="action danger" id="delGo" disabled>Rimuovi definitivamente</button>
+      </div>
+    </div>
+  </div>`;
+
+  const input = $("delConfirm");
+  const go = $("delGo");
+  collega(input, "input", () => {
+    go.disabled = input.value.trim() !== server.name;
+  });
+  collega($("delClose"), "click", closeModal);
+  collega($("delCancel"), "click", closeModal);
+  collega($("deleteModal"), "click", (ev) => {
+    if (ev.target.id === "deleteModal") closeModal();
+  });
+  collega(go, "click", async () => {
+    go.disabled = true;
+    try {
+      const r = await api("/api/servers/" + server.id, {method: "DELETE"});
+      if (state.selectedId === server.id){
+        state.selectedId = null;
+        state.detail = null;
+      }
+      closeModal();
+      toast(r.message || "Server rimosso");
+      await refreshAll(true);
+    } catch (err){
+      $("delMsg").className = "formMessage err";
+      $("delMsg").textContent = err.message;
+      go.disabled = false;
+    }
+  });
+  input.focus();
+}
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") closeModal();
+});
+
+/* ============================================================
+   Avvio
+   ============================================================ */
+
+els("#nav button").forEach((btn) => {
+  collega(btn, "click", () => go(btn.dataset.page));
+});
+collega($("refreshBtn"), "click", () => refreshAll());
+collega($("logoutBtn"), "click", async () => {
+  if (!confirm("Uscire da iLO Monitor?")) return;
+  try { await api("/api/logout", {method: "POST"}); } catch (err){ /* esce comunque */ }
+  location.href = "/login";
+});
+collega($("bell"), "click", () => {
+  state.eventFilters.hours = 24;
+  state.eventFilters.severity = "all";
+  go("events");
+});
+
+let searchTimer = null;
+collega($("search"), "input", (ev) => {
+  state.query = ev.target.value.trim();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    if (state.page === "events") reloadEvents();
+    else if (state.page === "overview" || state.page === "servers")
+      render({keepDetail: true});
+  }, 220);
+});
+
+setInterval(() => {
+  const timer = el(".timer");
+  if (!autoaggiornamentoAttivo()){
+    if (timer) timer.textContent = "Aggiornamento in pausa";
+    return;
+  }
+  if (timer && !$("countdown")){
+    timer.innerHTML = 'Aggiornamento tra <span id="countdown">'
+      + state.countdown + "</span> s";
+  }
+  state.countdown -= 1;
+  if (state.countdown <= 0){
+    state.countdown = state.settings.refresh;
+    refreshAll(true);
+  }
+  const node = $("countdown");
+  if (node) node.textContent = Math.max(0, state.countdown);
+}, 1000);
+
+(async function start(){
+  try {
+    const utente = await apiData("/api/me");
+    state.user = utente;
+    $("userName").textContent = utente.full_name || utente.username;
+    if (utente.must_change_password){
+      toast("Cambia la password dalla pagina Impostazioni", "warn");
+    }
+  } catch (err){
+    // Sessione scaduta fra il caricamento della pagina e questa
+    // richiesta: torniamo al login invece di mostrare una pagina vuota.
+    location.href = "/login";
+    return;
+  }
+  try {
+    const cfg = await apiData("/api/settings");
+    const seconds = Number(cfg.settings && cfg.settings.ui_refresh_seconds);
+    if (seconds >= 10){
+      state.settings.refresh = seconds;
+      state.countdown = seconds;
+    }
+  } catch (err){ /* valori predefiniti */ }
+  try {
+    await loadCore();
+  } catch (err){
+    toast("Connessione all'API non riuscita: " + err.message, "err");
+  }
+  await go("overview");
+})();
+</script>
+</body>
+</html>

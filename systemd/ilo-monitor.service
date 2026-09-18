@@ -1,0 +1,17 @@
+[Unit]
+Description=HPE iLO Monitor API
+After=network.target mariadb.service
+Requires=mariadb.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ilo-monitor
+Environment=ILO_MONITOR_BASE=/opt/ilo-monitor
+EnvironmentFile=/opt/ilo-monitor/config/.env
+ExecStart=/opt/ilo-monitor/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

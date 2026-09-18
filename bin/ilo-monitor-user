@@ -1,0 +1,186 @@
+#!/opt/ilo-monitor/venv/bin/python3
+"""Gestione degli utenti dell'interfaccia iLO Monitor.
+
+Usa l'interprete dell'ambiente virtuale, non quello di sistema:
+pymysql e le altre dipendenze sono installate solo li'.
+
+    ilo-monitor-user list
+    ilo-monitor-user add <nome>
+    ilo-monitor-user passwd <nome>
+    ilo-monitor-user delete <nome>
+
+La password viene chiesta senza mostrarla a video e salvata come hash.
+"""
+
+import getpass
+import os
+import secrets
+import string
+import sys
+
+sys.path.insert(0, os.getenv("ILO_MONITOR_BASE", "/opt/ilo-monitor"))
+
+try:
+    import pymysql  # noqa: E402
+    from dotenv import load_dotenv  # noqa: E402
+except ModuleNotFoundError as exc:
+    print(f"Modulo mancante: {exc.name}")
+    print(
+        "Stai usando l'interprete sbagliato. Lancia:\n"
+        "  /opt/ilo-monitor/venv/bin/python "
+        "/usr/local/bin/ilo-monitor-user " + " ".join(sys.argv[1:])
+    )
+    sys.exit(1)
+
+BASE_DIR = os.getenv("ILO_MONITOR_BASE", "/opt/ilo-monitor")
+load_dotenv(f"{BASE_DIR}/config/.env")
+
+from app import auth  # noqa: E402
+
+
+def db():
+    return pymysql.connect(
+        host=os.getenv("DB_HOST", "127.0.0.1"),
+        port=int(os.getenv("DB_PORT", "3306")),
+        user=os.getenv("DB_USER", "ilomonitor"),
+        password=os.getenv("DB_PASSWORD"),
+        database=os.getenv("DB_NAME", "ilomonitor"),
+        charset="utf8mb4",
+        autocommit=True,
+        cursorclass=pymysql.cursors.DictCursor,
+    )
+
+
+def generate_password(length=16):
+    alfabeto = string.ascii_letters + string.digits + "!@#%-_=+?"
+    while True:
+        password = "".join(secrets.choice(alfabeto) for _ in range(length))
+        if not auth.check_password_strength(password):
+            return password
+
+
+def chiedi_password(nome):
+    """Chiede la password due volte, o ne genera una se si preme invio."""
+    while True:
+        prima = getpass.getpass(
+            f"Password per {nome} (invio per generarla): "
+        )
+        if not prima:
+            password = generate_password()
+            print(f"\n  Password generata: {password}")
+            print("  Annotala adesso: non verra' piu' mostrata.\n")
+            return password, True
+
+        debole = auth.check_password_strength(prima)
+        if debole:
+            print(f"  {debole}")
+            continue
+
+        seconda = getpass.getpass("Ripeti la password: ")
+        if prima != seconda:
+            print("  Le due password non coincidono.")
+            continue
+        return prima, False
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        return 1
+
+    comando = sys.argv[1]
+    nome = sys.argv[2].strip() if len(sys.argv) > 2 else None
+    con = db()
+
+    try:
+        with con.cursor() as cur:
+            if comando == "list":
+                cur.execute(
+                    "SELECT username, full_name, created_at, last_login_at, "
+                    "must_change_password FROM app_users ORDER BY username"
+                )
+                righe = cur.fetchall()
+                if not righe:
+                    print("Nessun utente configurato.")
+                    return 0
+                for r in righe:
+                    ultimo = r["last_login_at"] or "mai"
+                    da_cambiare = (
+                        " (deve cambiare password)"
+                        if r["must_change_password"] else ""
+                    )
+                    print(
+                        f"  {r['username']:<20} ultimo accesso: {ultimo}"
+                        f"{da_cambiare}"
+                    )
+                return 0
+
+            if not nome:
+                print("Indica il nome utente.")
+                return 1
+
+            if comando == "add":
+                cur.execute(
+                    "SELECT id FROM app_users WHERE username=%s", (nome,)
+                )
+                if cur.fetchone():
+                    print(f"L'utente {nome} esiste gia'.")
+                    return 1
+                password, generata = chiedi_password(nome)
+                cur.execute(
+                    "INSERT INTO app_users "
+                    "(username, password_hash, must_change_password) "
+                    "VALUES (%s,%s,%s)",
+                    (nome, auth.hash_password(password), 1 if generata else 0),
+                )
+                print(f"Utente {nome} creato.")
+                return 0
+
+            if comando == "passwd":
+                cur.execute(
+                    "SELECT id FROM app_users WHERE username=%s", (nome,)
+                )
+                row = cur.fetchone()
+                if not row:
+                    print(f"L'utente {nome} non esiste.")
+                    return 1
+                password, generata = chiedi_password(nome)
+                cur.execute(
+                    "UPDATE app_users SET password_hash=%s, "
+                    "must_change_password=%s WHERE id=%s",
+                    (auth.hash_password(password),
+                     1 if generata else 0, row["id"]),
+                )
+                # Cambiare password chiude le sessioni aperte.
+                cur.execute(
+                    "DELETE FROM app_sessions WHERE user_id=%s", (row["id"],)
+                )
+                print(f"Password di {nome} aggiornata, sessioni chiuse.")
+                return 0
+
+            if comando == "delete":
+                cur.execute(
+                    "SELECT COUNT(*) AS n FROM app_users WHERE username<>%s",
+                    (nome,),
+                )
+                if not cur.fetchone()["n"]:
+                    print(
+                        "Non posso rimuovere l'ultimo utente: resteresti "
+                        "fuori dall'interfaccia."
+                    )
+                    return 1
+                cur.execute("DELETE FROM app_users WHERE username=%s", (nome,))
+                if cur.rowcount:
+                    print(f"Utente {nome} rimosso.")
+                    return 0
+                print(f"L'utente {nome} non esiste.")
+                return 1
+
+            print(__doc__)
+            return 1
+    finally:
+        con.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

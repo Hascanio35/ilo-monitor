@@ -1,0 +1,11 @@
+[Unit]
+Description=Esegue il collector iLO a intervalli regolari
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=15s
+Unit=ilo-monitor-collector.service
+
+[Install]
+WantedBy=timers.target

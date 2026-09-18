@@ -1,0 +1,74 @@
+# ============================================================
+# iLO Monitor
+#
+#   cp .env.example .env     poi modifica le password
+#   docker compose up -d
+#   docker compose logs -f api   per leggere la password iniziale
+#
+# L'interfaccia risponde su http://localhost:8080
+# ============================================================
+
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-ilomonitor}
+      MARIADB_USER: ${DB_USER:-ilomonitor}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?indica DB_PASSWORD nel file .env}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?indica DB_ROOT_PASSWORD nel file .env}
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  api:
+    build: .
+    image: ilo-monitor:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-ilomonitor}
+      DB_USER: ${DB_USER:-ilomonitor}
+      DB_PASSWORD: ${DB_PASSWORD}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      REDFISH_TIMEOUT: ${REDFISH_TIMEOUT:-30}
+    volumes:
+      # Contiene secret.key, che cifra le password degli iLO.
+      # Perderlo significa reinserirle tutte.
+      - config:/opt/ilo-monitor/config
+    ports:
+      - "${HTTP_PORT:-8080}:8000"
+    command: ["api"]
+
+  collector:
+    build: .
+    image: ilo-monitor:latest
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-ilomonitor}
+      DB_USER: ${DB_USER:-ilomonitor}
+      DB_PASSWORD: ${DB_PASSWORD}
+      COLLECT_INTERVAL_MINUTES: ${COLLECT_INTERVAL_MINUTES:-5}
+      REDFISH_TIMEOUT: ${REDFISH_TIMEOUT:-30}
+    volumes:
+      # Stessa chiave del servizio api: senza, non potrebbe
+      # decifrare le password per collegarsi agli iLO.
+      - config:/opt/ilo-monitor/config
+    command: ["collector"]
+
+volumes:
+  db-data:
+  config:

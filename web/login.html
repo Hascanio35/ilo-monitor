@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport"
+  content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b121b">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="/icons/favicon-64.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="iLO Monitor">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="application-name" content="iLO Monitor">
+<title>Accesso — iLO Monitor</title>
+<style>
+:root{--bg:#0b121b;--panel:#12202c;--line:#263b4b;--text:#edf4f8;
+ --muted:#91a5b7;--green:#19e6a1;--green2:#09ae7c;--red:#ff5b67}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;max-width:100%;overflow-x:hidden;
+ background:var(--bg);color:var(--text);
+ font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:13px;
+ -webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{display:flex;align-items:center;justify-content:center;padding:20px;
+ padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+.card{width:100%;max-width:400px;min-width:0;flex:0 1 400px;
+ background:var(--panel);border:1px solid var(--line);
+ border-radius:11px;padding:30px 24px;box-shadow:0 24px 70px rgba(0,0,0,.45)}
+/* Nessun testo deve poter allargare la scheda. */
+.card *{min-width:0;max-width:100%}
+.foot,.msg,.sub,h1{overflow-wrap:anywhere}
+.brand{display:flex;align-items:center;gap:13px;margin-bottom:22px}
+.mark{width:38px;height:16px;border:2px solid var(--green);flex:0 0 38px;
+ box-shadow:0 0 10px rgba(25,230,161,.25)}
+.brand div{line-height:13px;font-weight:800;font-size:12px;letter-spacing:-.3px}
+h1{font-size:20px;margin:0 0 5px}
+.sub{color:var(--muted);font-size:12px;margin:0 0 22px}
+label{display:block;font-size:11px;color:#aebdca;margin-bottom:14px}
+input{display:block;width:100%;height:44px;margin-top:6px;
+ border:1px solid #304657;background:#0f1b26;color:#fff;border-radius:7px;
+ padding:0 11px;outline:none;font-family:inherit;
+ /* Sotto i 16px iOS ingrandisce la pagina appena si tocca il campo,
+    e non la rimpicciolisce piu'. La scorciatoia che eredita tutto il
+    carattere azzererebbe anche questa dimensione, percio' si eredita
+    solo la famiglia. */
+ font-size:16px}
+input:focus{border-color:var(--green)}
+button{width:100%;height:46px;border:0;border-radius:7px;background:var(--green2);
+ color:#fff;font-weight:700;font-size:15px;cursor:pointer;margin-top:6px;
+ font-family:inherit}
+button:hover{background:#0ac68d}
+button:disabled{opacity:.6;cursor:default}
+.msg{min-height:20px;margin-top:13px;font-size:11.5px;color:var(--red);
+ text-align:center}
+.foot{margin-top:20px;padding-top:16px;border-top:1px solid var(--line);
+ color:#7a8fa1;font-size:10.5px;line-height:16px}
+.warn{color:#ffbd3d}
+</style>
+</head>
+<body>
+<form class="card" id="form" autocomplete="on">
+  <div class="brand">
+    <div class="mark"></div>
+    <div>Hewlett Packard<br>Enterprise</div>
+  </div>
+  <h1>iLO Monitor</h1>
+  <p class="sub">Accedi per consultare e gestire i server</p>
+
+  <label>Nome utente
+    <input name="username" autocomplete="username" required autofocus></label>
+  <label>Password
+    <input name="password" type="password" autocomplete="current-password"
+      required></label>
+
+  <button type="submit" id="go">Accedi</button>
+  <div class="msg" id="msg"></div>
+
+  <div class="foot" id="foot"></div>
+</form>
+
+<script>
+"use strict";
+const form = document.getElementById("form");
+const msg = document.getElementById("msg");
+const go = document.getElementById("go");
+
+// Su HTTP la password viaggia in chiaro sulla rete: meglio dirlo.
+if (location.protocol !== "https:" && location.hostname !== "localhost"){
+  document.getElementById("foot").innerHTML =
+    '<span class="warn">Connessione non cifrata:</span> questa pagina è '
+    + 'servita in HTTP, quindi la password transita in chiaro sulla rete '
+    + 'locale. Valuta di attivare HTTPS su nginx.';
+}
+
+form.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  msg.textContent = "";
+  go.disabled = true;
+  go.textContent = "Accesso in corso…";
+  try {
+    const data = Object.fromEntries(new FormData(form).entries());
+    const response = await fetch("/api/login", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({username: data.username, password: data.password})
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok){
+      msg.textContent = payload.detail || "Accesso non riuscito";
+      go.disabled = false;
+      go.textContent = "Accedi";
+      form.querySelector("[name=password]").value = "";
+      form.querySelector("[name=password]").focus();
+      return;
+    }
+    location.href = "/";
+  } catch (err){
+    msg.textContent = "Connessione al servizio non riuscita: " + err.message;
+    go.disabled = false;
+    go.textContent = "Accedi";
+  }
+});
+</script>
+</body>
+</html>

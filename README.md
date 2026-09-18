@@ -44,6 +44,10 @@ $EDITOR .env          # cambia almeno DB_PASSWORD e DB_ROOT_PASSWORD
 docker compose up -d
 ```
 
+Il repository impone i fine riga Unix agli script (`.gitattributes`):
+serve perche' girano dentro contenitori Linux anche quando il clone
+avviene su Windows.
+
 L'interfaccia risponde su <http://localhost:8080>.
 
 La password del primo accesso viene generata e stampata una sola

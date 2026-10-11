@@ -210,6 +210,12 @@ body.ridimensiona{cursor:ns-resize;user-select:none}
  border-bottom:1px solid var(--line);font-size:11px}
 .line:last-child{border-bottom:0}
 .line .val{display:flex;align-items:center;gap:8px;white-space:nowrap}
+/* Nomi lunghi dei sensori: una riga sola, con i puntini, invece di
+   andare a capo una parola per riga quando il riquadro e' stretto. */
+.line > span:first-child{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;
+ text-overflow:ellipsis}
+.line .val{flex:0 0 auto}
+.detailGrid .bar{width:64px;flex-basis:64px}
 .bar{height:9px;width:105px;border-radius:5px;background:#293a49;overflow:hidden;flex:0 0 105px}
 .bar i{display:block;height:100%;border-radius:5px;background:var(--green)}
 .bar i.warn{background:var(--amber)}.bar i.bad{background:var(--red)}
@@ -1469,7 +1475,7 @@ function overviewTab(d){
       <div class="boxBody">${sensors.length ? sensors.slice(0, 6).map((x) => {
         const v = num(x.temperature_c);
         const c = tempClass(v);
-        return `<div class="line"><span>${esc(x.sensor_name)}</span>
+        return `<div class="line"><span title="${esc(x.sensor_name)}">${esc(x.sensor_name)}</span>
           <span class="val"><b class="tempVal ${c}">${fmtInt(v, " °C")}</b>
           <span class="bar"><i class="${c}" style="width:${Math.min(100,
             Math.max(4, (v || 0)))}%"></i></span></span></div>`;

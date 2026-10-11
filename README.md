@@ -17,6 +17,24 @@ stanno sette server.
 > Enterprise. "HPE", "ProLiant" e "iLO" sono marchi dei rispettivi
 > titolari.
 
+## Schermate
+
+Le schermate usano server e dati di esempio.
+
+![Panoramica: riepilogo, elenco server, dettaglio del server selezionato](docs/screenshots/panoramica.png)
+
+| Dischi di tutti i server, per vita residua | Storage di un server, con un NVMe letto da Windows |
+|---|---|
+| ![Pagina Dischi](docs/screenshots/dischi.png) | ![Scheda Storage](docs/screenshots/storage.png) |
+
+| Mappe termiche | Report |
+|---|---|
+| ![Mappe termiche](docs/screenshots/temperature.png) | ![Report](docs/screenshots/report.png) |
+
+<p align="center">
+  <img src="docs/screenshots/telefono.png" alt="Sul telefono: panoramica e pagina Dischi" width="560">
+</p>
+
 ## Cosa fa
 
 - **Multi-server.** Ogni iLO ha le sue credenziali, cifrate nel

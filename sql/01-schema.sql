@@ -163,6 +163,9 @@ CREATE TABLE IF NOT EXISTS physical_drives (
     state VARCHAR(50) NULL,
     failure_predicted BOOLEAN NULL,
     media_life_left_percent DECIMAL(8,2) NULL,
+    serial_number VARCHAR(100) NULL,
+    endurance_used_percent DECIMAL(8,2) NULL,
+    power_on_hours INT NULL,
     FOREIGN KEY (server_id)
         REFERENCES servers(id)
         ON DELETE CASCADE,

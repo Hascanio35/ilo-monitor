@@ -22,7 +22,7 @@
  --blue:#45a8ff;--amber:#ffbd3d;--red:#ff5b67;--purple:#a77cff;
 }
 *{box-sizing:border-box}
-html,body{margin:0;min-height:100%;max-width:100%;overflow-x:hidden;background:var(--bg);color:var(--text);
+html,body{margin:0;min-height:100%;max-width:100%;overflow-x:hidden;overflow-x:clip;background:var(--bg);color:var(--text);
  font-family:Inter,"Segoe UI",Arial,sans-serif;
  -webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{-webkit-tap-highlight-color:rgba(25,230,161,.15)}
@@ -48,7 +48,9 @@ a{color:var(--blue)}
 .nav button:hover{background:#12222e;color:#fff}
 .nav button.active{background:linear-gradient(90deg,rgba(25,230,161,.16),rgba(25,230,161,.05));
  color:var(--green);border-left-color:var(--green)}
-.navIcon{width:19px;text-align:center;font-size:16px}
+.navIcon{width:19px;text-align:center;font-size:16px;display:inline-flex;align-items:center;justify-content:center}
+.navIcon svg,.bell svg,.kpiIcon svg,.serverGlyph svg{display:block}
+.kpiIcon svg{width:.85em;height:.85em}
 .version{position:absolute;left:18px;bottom:18px;color:#718596;font-size:11px;line-height:16px}
 
 /* ---------- header ---------- */
@@ -91,6 +93,8 @@ main{padding:18px 14px 40px}
  place-items:center;font-size:28px;color:var(--green);flex:0 0 54px}
 .blue .kpiIcon{background:rgba(69,168,255,.12);color:var(--blue)}
 .purple .kpiIcon{background:rgba(167,124,255,.14);color:var(--purple)}
+.amber .kpiIcon{background:rgba(255,189,61,.14);color:var(--amber)}
+.red .kpiIcon{background:rgba(255,91,103,.14);color:var(--red)}
 .kpiValue{font-size:25px;font-weight:800;line-height:27px}
 .kpiLabel{font-size:13px;color:#d9e4ea;margin-top:3px}
 .kpiSub{margin-top:10px;color:var(--muted);font-size:11px}
@@ -125,6 +129,8 @@ main{padding:18px 14px 40px}
 .serverList td:nth-child(4),.serverList td:nth-child(5){text-align:right}
 .serverList th:nth-child(4),.serverList th:nth-child(5){text-align:right}
 .rowActions{text-align:right;overflow:visible!important}
+.iconBtn svg,.srvCardActions svg,.action svg,.refresh svg{display:inline-block;vertical-align:-2px}
+.refresh svg{font-size:15px;vertical-align:-3px}
 .iconBtn{background:#1b2b39;border:1px solid #304657;color:#cfdce6;
  border-radius:5px;width:26px;height:24px;font-size:12px;line-height:1;
  padding:0;margin-left:3px}
@@ -141,6 +147,11 @@ main{padding:18px 14px 40px}
 .stateDot.warn{background:var(--amber)}.stateDot.bad{background:var(--red)}
 .stateDot.off{background:#6b8095}
 .scrollY{max-height:420px;overflow:auto}
+.resizer{height:12px;cursor:ns-resize;display:flex;align-items:center;justify-content:center;
+ border-top:1px solid var(--line);touch-action:none;user-select:none}
+.resizer span{width:42px;height:4px;border-radius:2px;background:#33495b;transition:background .15s}
+.resizer:hover span,.resizer.attiva span{background:var(--green)}
+body.ridimensiona{cursor:ns-resize;user-select:none}
 .eventsPanel{margin-top:14px}
 .sevWarn{color:var(--amber)}.sevInfo{color:var(--blue)}.sevBad{color:var(--red)}
 .nowrap{white-space:nowrap}
@@ -173,7 +184,9 @@ main{padding:18px 14px 40px}
 .menu button:hover{background:#1e3040}
 .menu button.danger{color:#ff8a92}
 .menu hr{border:0;border-top:1px solid #2a3f50;margin:5px 2px}
-.tabs{min-height:45px;border-bottom:1px solid var(--line);display:flex;padding-left:10px;overflow-x:auto}
+.tabs{min-height:45px;border-bottom:1px solid var(--line);display:flex;padding-left:10px;overflow-x:auto;
+ scrollbar-width:none;-ms-overflow-style:none}
+.tabs::-webkit-scrollbar{display:none}
 .tabs button{border:0;background:none;color:#a8b8c5;padding:12px 17px;white-space:nowrap;
  border-bottom:3px solid transparent}
 .tabs button:hover{color:#fff}
@@ -192,7 +205,7 @@ main{padding:18px 14px 40px}
 .boxLink{color:var(--blue);font-size:10px;font-weight:500;background:none;border:0;padding:0}
 .boxLink:hover{text-decoration:underline}
 .boxBody{padding:8px 12px}
-.boxBody.flush{padding:0}
+.boxBody.flush{padding:0;overflow-x:auto}
 .line{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;
  border-bottom:1px solid var(--line);font-size:11px}
 .line:last-child{border-bottom:0}
@@ -217,6 +230,12 @@ main{padding:18px 14px 40px}
 .thermalItem strong.warn{color:var(--amber)}.thermalItem strong.bad{color:var(--red)}
 .fullPanel{margin-top:12px}
 .empty{padding:26px 14px;text-align:center;color:#8fa4b5;font-size:12px}
+.apiError{display:flex;align-items:center;justify-content:space-between;gap:14px;
+ background:rgba(255,91,103,.10);border:1px solid rgba(255,91,103,.45);border-radius:9px;
+ padding:12px 14px;margin-bottom:14px;font-size:12px;color:#ffd0d4}
+.apiError b{display:block;color:#ff8a92;font-size:13px;margin-bottom:3px}
+.apiError span{overflow-wrap:anywhere}
+.apiError .action{flex:0 0 auto}
 .empty b{display:block;color:#c3d2dd;font-size:13px;margin-bottom:5px}
 
 /* ---------- pagine ---------- */
@@ -239,6 +258,62 @@ input.field::placeholder{color:#6f8598}
  justify-content:space-between;border:1px solid rgba(255,255,255,.06)}
 .heatCell small{font-size:9px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .heatCell b{font-size:14px}
+
+/* ---------- dischi di tutti i server ---------- */
+.lifeCell{display:flex;align-items:center;gap:9px;white-space:nowrap}
+.lifeCell .bar{width:70px;flex:0 0 70px}
+.lifeCell b{min-width:38px;text-align:right;font-size:12px}
+.lifeNa{color:#7f95a8;font-size:11px;white-space:nowrap}
+.lifeNa.lifeOver{cursor:help;text-decoration:underline dotted}
+.serialTxt{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;
+ color:#c3d2dd;white-space:nowrap}
+.subLine{font-size:10.5px;color:#7f95a8;margin-top:2px}
+.codice{background:#0b141c;border:1px solid #2b4052;border-radius:6px;padding:9px 11px;
+ margin:8px 0;font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#d6e4ee;
+ white-space:pre-wrap;overflow-wrap:anywhere;user-select:all}
+.fonteWin{display:inline-block;font-size:9.5px;padding:1px 5px;border-radius:4px;
+ background:rgba(69,168,255,.14);color:#8ecbff;vertical-align:1px;margin-left:4px;
+ font-weight:600;letter-spacing:.2px}
+.hintBox{background:rgba(255,189,61,.08);border:1px solid rgba(255,189,61,.35);
+ border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:11.5px;line-height:17px;
+ color:#e9dcc0}
+.hintBox b{color:var(--amber)}
+.drvMeta .serialTxt,.drvMeta{white-space:normal}
+.linkBtn{background:none;border:0;padding:0;color:#e7f0f6;font:inherit;font-weight:600;
+ cursor:pointer;text-align:left}
+.linkBtn:hover{color:var(--green);text-decoration:underline}
+.driveCards{display:none}
+.drvCard{padding:11px 13px 11px 12px;border-bottom:1px solid var(--line);
+ border-left:3px solid #2f5a7a}
+.drvCard:last-child{border-bottom:0}
+.drvCard.warn{border-left-color:var(--amber)}
+.drvCard.bad{border-left-color:var(--red)}
+.drvCard.ok{border-left-color:var(--green)}
+.drvTop{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.drvTop .linkBtn{font-size:13.5px}
+.drvBay{color:var(--muted);font-size:11px;white-space:nowrap}
+.drvModel{font-size:12.5px;margin-top:4px;color:#e3ecf2;overflow-wrap:anywhere}
+.drvMeta{font-size:10.5px;color:#7f95a8;margin-top:4px;overflow-wrap:anywhere}
+.drvLife{display:flex;align-items:center;gap:9px;margin-top:8px}
+.drvLife .bar{flex:1 1 auto;width:auto}
+.drvLife b{font-size:13px;white-space:nowrap}
+.kpi.amber{background:linear-gradient(120deg,rgba(255,189,61,.12),var(--panel) 70%)}
+.kpi.red{background:linear-gradient(120deg,rgba(255,91,103,.13),var(--panel) 70%)}
+
+/* ---------- eventi a schede (telefono) ---------- */
+.eventCards{display:none}
+.evCard{padding:11px 13px 11px 12px;border-bottom:1px solid var(--line);
+ border-left:3px solid #3a5062}
+.evCard:last-child{border-bottom:0}
+.evCard.ev-sevWarn{border-left-color:var(--amber)}
+.evCard.ev-sevBad{border-left-color:var(--red)}
+.evCard.ev-sevInfo{border-left-color:#2f5a7a}
+.evTop{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.evSev{font-size:11.5px;font-weight:600;white-space:nowrap}
+.evWhen{color:var(--muted);font-size:11px;white-space:nowrap}
+.evMsg{font-size:13.5px;line-height:19px;margin-top:5px;color:#e3ecf2;
+ overflow-wrap:anywhere}
+.evMeta{font-size:10.5px;color:#7f95a8;margin-top:5px;overflow-wrap:anywhere}
 
 /* ---------- elenco server a schede (telefono) ---------- */
 .serverCards{display:none;padding:9px}
@@ -338,6 +413,12 @@ input.field::placeholder{color:#6f8598}
  .sidebar{width:auto;inset:auto 0 0 0;height:auto;border-right:0;
   border-top:1px solid #1d3040;background:#0d1722;
   padding-bottom:env(safe-area-inset-bottom)}
+ /* Alcune versioni di Safari su iOS tengono gli elementi fissi un po'
+    sopra il bordo inferiore, e nello spazio rimasto si vede scorrere
+    la pagina. Il fondo della barra prosegue verso il basso e lo copre:
+    se il margine non c'e', resta semplicemente fuori dallo schermo. */
+ .sidebar:after{content:"";position:absolute;left:0;right:0;top:100%;
+  height:120px;background:#0d1722}
  .logo,.version{display:none}
  .nav{padding:0;display:flex}
  .nav button{flex:1;flex-direction:column;gap:3px;padding:9px 2px 8px;
@@ -352,6 +433,7 @@ input.field::placeholder{color:#6f8598}
  main{padding:11px 10px calc(76px + env(safe-area-inset-bottom))}
 
  .header{height:auto;min-height:0;flex-wrap:wrap;gap:9px;padding:11px 12px;
+  padding-top:calc(11px + env(safe-area-inset-top));
   position:sticky;top:0;z-index:20}
  .headLeft{flex:1 1 auto;min-width:0}
  .headLeft h1{font-size:17px}
@@ -379,7 +461,12 @@ input.field::placeholder{color:#6f8598}
  /* L'elenco a tabella cede il posto alle schede. */
  .serverTable{display:none}
  .serverCards{display:block}
- .scrollY{max-height:none}
+ .eventTable{display:none}
+ .eventCards{display:block}
+ .driveTable{display:none}
+ .driveCards{display:block}
+ .scrollY,.scrollY[data-resize]{max-height:none!important}
+ .resizer{display:none}
 
  .tabs{padding-left:0}
  .tabs button{padding:13px 14px;font-size:12px}
@@ -418,7 +505,7 @@ input.field::placeholder{color:#6f8598}
 
  .pageToolbar{gap:9px}
  .toolbarControls{width:100%}
- .toolbarControls .field{flex:1 1 140px}
+ .toolbarControls .field{flex:1 1 140px;min-width:0}
 
  /* Sotto i 16px iOS ingrandisce la pagina quando si tocca un campo,
     e poi resta ingrandita: meglio alzare il corpo del testo. */
@@ -428,6 +515,11 @@ input.field::placeholder{color:#6f8598}
 
 @media(max-width:420px){
  .kpis{grid-template-columns:minmax(0,1fr)}
+ /* Quattro riquadri uno sotto l'altro spingerebbero l'elenco dei
+    dischi, che e' il motivo della pagina, fuori dallo schermo. */
+ .kpis.drvKpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .drvKpis .kpiIcon{display:none}
+ .drvKpis .kpiSub{overflow-wrap:anywhere}
  .miniGrid{grid-template-columns:minmax(0,1fr)}
  .navText{display:none}
  .nav button{min-height:50px}
@@ -443,13 +535,14 @@ input.field::placeholder{color:#6f8598}
     <div class="logoText"><span>Hewlett Packard</span><span>Enterprise</span></div>
   </div>
   <nav class="nav" id="nav">
-    <button data-page="overview"><span class="navIcon">▣</span><span class="navText">Panoramica</span></button>
-    <button data-page="servers"><span class="navIcon">▤</span><span class="navText">Server</span></button>
-    <button data-page="thermal"><span class="navIcon">♨</span><span class="navText">Mappe termiche</span></button>
-    <button data-page="events"><span class="navIcon">⚑</span><span class="navText">Eventi</span></button>
-    <button data-page="reports"><span class="navIcon">◱</span><span class="navText">Report</span></button>
-    <button data-page="alerts"><span class="navIcon">✉</span><span class="navText">Avvisi email</span></button>
-    <button data-page="settings"><span class="navIcon">⚙</span><span class="navText">Impostazioni</span></button>
+    <button data-page="overview"><span class="navIcon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span><span class="navText">Panoramica</span></button>
+    <button data-page="servers"><span class="navIcon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg></span><span class="navText">Server</span></button>
+    <button data-page="thermal"><span class="navIcon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z"/><path d="M12 9v6"/></svg></span><span class="navText">Mappe termiche</span></button>
+    <button data-page="drives"><span class="navIcon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="11" r="4"/><path d="M12 11h.01M8 18h3"/></svg></span><span class="navText">Dischi</span></button>
+    <button data-page="events"><span class="navIcon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg></span><span class="navText">Eventi</span></button>
+    <button data-page="reports"><span class="navIcon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><path d="M7 16v-5M12 16V7M17 16v-8"/></svg></span><span class="navText">Report</span></button>
+    <button data-page="alerts"><span class="navIcon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span><span class="navText">Avvisi email</span></button>
+    <button data-page="settings"><span class="navIcon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></span><span class="navText">Impostazioni</span></button>
   </nav>
   <div class="version">HPE iLO Monitor<br>v2.0.0</div>
 </aside>
@@ -464,11 +557,11 @@ input.field::placeholder{color:#6f8598}
     <div class="searchWrap">
       <input id="search" class="search" placeholder="Cerca server..." autocomplete="off">
     </div>
-    <button class="bell" id="bell" title="Eventi delle ultime 24 ore">⚑<b id="bellCount" class="zero">0</b></button>
+    <button class="bell" id="bell" title="Eventi delle ultime 24 ore"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg><b id="bellCount" class="zero">0</b></button>
     <div class="user"><div class="avatar">●</div>
       <span id="userName">…</span></div>
-    <button class="refresh" id="logoutBtn" title="Esci">⎋</button>
-    <button class="refresh" id="refreshBtn" title="Aggiorna ora">⟳</button>
+    <button class="refresh" id="logoutBtn" title="Esci"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4"/><path d="M10 16l-4-4 4-4"/><path d="M6 12h10"/></svg></button>
+    <button class="refresh" id="refreshBtn" title="Aggiorna ora"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg></button>
   </div>
   <div class="timer">Aggiornamento tra <span id="countdown">45</span> s</div>
 </header>
@@ -500,7 +593,8 @@ const state = {
   loading: false,
   eventFilters: {severity: "all", hours: 168, q: "", server_id: "",
                  source: "all"},
-  reportHours: 24
+  reportHours: 24,
+  drivesView: {filtro: "tutti", ordine: "vita"}
 };
 
 const $ = (id) => document.getElementById(id);
@@ -512,7 +606,13 @@ function esc(v){
     {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]
   ));
 }
-function num(v){ const x = Number(v); return Number.isFinite(x) ? x : null; }
+// Number(null) e Number("") valgono 0: un dato assente diventerebbe
+// "0 W" o "0 %" invece di "non misurato".
+function num(v){
+  if (v === null || v === undefined || v === "") return null;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : null;
+}
 function fmt(v, suffix){
   const x = num(v);
   if (x === null) return "—";
@@ -569,12 +669,25 @@ function tb(bytes){
   if (x >= 1e12) return (Math.round(x / 1e12 * 10) / 10) + " TB";
   return (Math.round(x / 1e9)) + " GB";
 }
+// Icone in SVG: i simboli Unicode equivalenti su iOS diventano
+// emoji a colori o quadratini vuoti, secondo il carattere.
+const IC = {
+  play: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 5v14l11-7z"/></svg>',
+  ext: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+  power: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v9"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>',
+  refresh: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg>',
+  logout: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4"/><path d="M10 16l-4-4 4-4"/><path d="M6 12h10"/></svg>',
+};
+
 // La console remota HTML5 sta all'indirizzo /irc.html dell'iLO e si
 // apre senza passare dalla sua interfaccia. Chiede comunque le
 // credenziali: l'autenticazione passa da un cookie dell'origine
 // dell'iLO, che una pagina servita da qui non puo' scrivere. Farle
 // riempire al gestore password del browser e' la strada pratica.
 function consoleUrl(server){
+  // Gli iLO 2 e 3 non hanno la console HTML5: si apre la loro pagina,
+  // da cui parte la console Java o .NET.
+  if (server.ilo_protocol === "ribcl") return "https://" + server.ilo_ip + "/";
   return "https://" + server.ilo_ip + "/irc.html";
 }
 function hasConsole(server){
@@ -586,6 +699,22 @@ function hasConsole(server){
 }
 function openConsole(server){
   window.open(consoleUrl(server), "_blank", "noopener");
+}
+
+// Un alloggiamento vuoto (State "Absent") non e' un componente: non
+// va contato fra le anomalie ne' nelle medie.
+function presenti(lista){
+  return (lista || []).filter(
+    (x) => String(x.state || "").toLowerCase() !== "absent");
+}
+
+// La generazione dell'iLO. iLO 5 e 6 la mettono nel modello; iLO 4
+// lascia il modello vuoto e la scrive solo nel firmware ("iLO 4 v2.82").
+function iloGen(s){
+  const v = String(s.ilo_version || "");
+  if (/\d/.test(v)) return v;
+  const m = String(s.ilo_firmware || "").match(/iLO\s*\d/i);
+  return m ? m[0] : (v || "iLO");
 }
 
 // Nell'elenco compatto "HPE ProLiant DL360 Gen10" diventa
@@ -743,7 +872,14 @@ async function api(url, options){
     throw new Error("Sessione scaduta");
   }
   if (!response.ok){
-    const detail = payload.detail || payload.error || text || ("HTTP " + response.status);
+    // Una pagina HTML al posto del JSON arriva da nginx: l'API e'
+    // ferma o si sta riavviando.
+    const html = /^\s*</.test(text);
+    const detail = payload.detail && !html ? payload.detail
+      : payload.error ? payload.error
+      : html || !text ? "HTTP " + response.status + (response.status >= 502
+        ? " da nginx: il servizio ilo-monitor non risponde" : "")
+      : text;
     throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
   return payload;
@@ -757,11 +893,23 @@ async function apiData(url, options){
    Caricamento dati e routing
    ============================================================ */
 
+// Un errore qui non deve sembrare un impianto vuoto: si tiene
+// l'ultimo elenco buono e si mostra il motivo in cima alla pagina.
 async function loadCore(){
-  const [summary, servers] = await Promise.all([
-    apiData("/api/summary"),
-    apiData("/api/servers")
-  ]);
+  const conNome = (url) => apiData(url).catch((err) => {
+    throw new Error(url + ": " + err.message);
+  });
+  let summary, servers;
+  try {
+    [summary, servers] = await Promise.all([
+      conNome("/api/summary"),
+      conNome("/api/servers")
+    ]);
+  } catch (err){
+    state.apiError = err.message;
+    throw err;
+  }
+  state.apiError = null;
   state.summary = summary;
   state.servers = servers;
   if (summary.temp_warning_c) state.settings.tempWarn = Number(summary.temp_warning_c);
@@ -785,6 +933,7 @@ const PAGES = {
   overview: {title: "iLO Monitor", subtitle: "Monitoraggio centralizzato server HPE"},
   servers: {title: "Server", subtitle: "Inventario completo dei server monitorati"},
   thermal: {title: "Mappe termiche", subtitle: "Sensori e ventole di tutti i server"},
+  drives: {title: "Dischi", subtitle: "Vita residua e stato dei dischi di tutti i server"},
   events: {title: "Eventi", subtitle: "Registro eventi iLO"},
   reports: {title: "Report", subtitle: "Andamento di consumi, temperature e carico"},
   alerts: {title: "Avvisi email",
@@ -798,7 +947,8 @@ async function go(page, options){
   $("pageTitle").textContent = meta.title;
   $("pageSubtitle").textContent = meta.subtitle;
   els("#nav button").forEach((b) => b.classList.toggle("active", b.dataset.page === page));
-  $("search").placeholder = page === "events" ? "Cerca nei messaggi..." : "Cerca server...";
+  $("search").placeholder = page === "events" ? "Cerca nei messaggi..."
+    : page === "drives" ? "Cerca server, modello o seriale..." : "Cerca server...";
   await render(options);
 }
 
@@ -823,6 +973,11 @@ async function render(options){
       state.settings.tempWarn = Number(data.temp_warning_c) || state.settings.tempWarn;
       state.settings.tempCrit = Number(data.temp_critical_c) || state.settings.tempCrit;
       disegna(root, thermalPage(data), inPlace);
+    } else if (state.page === "drives"){
+      if (!inPlace) root.innerHTML = '<div class="empty">Caricamento dischi…</div>';
+      state.drivesData = await apiData("/api/drives");
+      disegna(root, drivesPage(state.drivesData), inPlace);
+      wireDrivesPage();
     } else if (state.page === "events"){
       root.innerHTML = eventsPageShell();
       wireEventsPage();
@@ -874,17 +1029,23 @@ async function refreshAll(silent){
   }
   state.loading = true;
   $("refreshBtn").classList.add("busy");
-  $("refreshBtn").innerHTML = '<span class="spin">⟳</span>';
+  $("refreshBtn").innerHTML = '<span class="spin">' + IC.refresh + '</span>';
   try {
-    await loadCore();
-    if (state.page === "overview" || state.page === "servers") await loadDetail(true);
+    let erroreCore = null;
+    try { await loadCore(); } catch (err){ erroreCore = err; }
+    if (!erroreCore && (state.page === "overview" || state.page === "servers")){
+      await loadDetail(true);
+    }
+    // Si ridisegna anche se il caricamento e' fallito, cosi' l'avviso
+    // compare (e sparisce quando torna tutto a posto).
     await render({keepDetail: true, silenzioso: Boolean(silent)});
+    if (erroreCore) throw erroreCore;
   } catch (err){
     if (!silent) toast("Aggiornamento non riuscito: " + err.message, "err");
   } finally {
     state.loading = false;
     $("refreshBtn").classList.remove("busy");
-    $("refreshBtn").textContent = "⟳";
+    $("refreshBtn").innerHTML = IC.refresh;
     state.countdown = state.settings.refresh;
     $("countdown").textContent = state.countdown;
   }
@@ -894,12 +1055,95 @@ async function refreshAll(silent){
    Pagina Panoramica
    ============================================================ */
 
+function avvisoApi(){
+  if (!state.apiError) return "";
+  return `<div class="apiError" role="alert">
+    <div><b>Dati dei server non disponibili</b>
+      <span>${esc(state.apiError)}</span></div>
+    <button class="action" data-api-retry="1">Riprova</button></div>`;
+}
+
+/* ---------- riquadri ridimensionabili ----------
+   Elenco server ed eventi recenti hanno un'altezza massima: si
+   allunga o accorcia trascinando la maniglia sotto il riquadro, e il
+   doppio clic la adatta al contenuto. L'altezza scelta resta salvata
+   in questo browser. */
+
+const ALTEZZA_PREDEFINITA = 420;
+const ALTEZZA_MINIMA = 120;
+
+function leggiAltezze(){
+  try {
+    const v = JSON.parse(localStorage.getItem("ilo-altezze") || "{}");
+    return v && typeof v === "object" ? v : {};
+  } catch (e){ return {}; }
+}
+state.altezze = leggiAltezze();
+
+function salvaAltezze(){
+  try { localStorage.setItem("ilo-altezze", JSON.stringify(state.altezze)); }
+  catch (e){ /* navigazione privata: vale solo per questa sessione */ }
+}
+
+function stileAltezza(nome){
+  const h = state.altezze[nome];
+  if (h === 0) return ' style="max-height:none"';
+  return ` style="max-height:${Number(h) || ALTEZZA_PREDEFINITA}px"`;
+}
+
+function maniglia(nome){
+  return `<div class="resizer" data-resizer="${nome}" role="separator"
+    aria-orientation="horizontal" title="Trascina per allungare o accorciare · doppio clic: adatta al contenuto"><span></span></div>`;
+}
+
+(function(){
+  let trascina = null;
+  document.addEventListener("pointerdown", (ev) => {
+    const handle = ev.target.closest && ev.target.closest("[data-resizer]");
+    if (!handle) return;
+    const nome = handle.dataset.resizer;
+    const box = document.querySelector(`[data-resize="${nome}"]`);
+    if (!box) return;
+    ev.preventDefault();
+    trascina = {nome, box, y: ev.clientY, h: box.getBoundingClientRect().height};
+    handle.classList.add("attiva");
+    document.body.classList.add("ridimensiona");
+    try { handle.setPointerCapture(ev.pointerId); } catch (e){ /* ok */ }
+  });
+  document.addEventListener("pointermove", (ev) => {
+    if (!trascina) return;
+    const h = Math.max(ALTEZZA_MINIMA, Math.round(trascina.h + ev.clientY - trascina.y));
+    trascina.box.style.maxHeight = h + "px";
+    state.altezze[trascina.nome] = h;
+  });
+  const fine = () => {
+    if (!trascina) return;
+    els(".resizer.attiva").forEach((x) => x.classList.remove("attiva"));
+    document.body.classList.remove("ridimensiona");
+    trascina = null;
+    salvaAltezze();
+  };
+  document.addEventListener("pointerup", fine);
+  document.addEventListener("pointercancel", fine);
+  document.addEventListener("dblclick", (ev) => {
+    const handle = ev.target.closest && ev.target.closest("[data-resizer]");
+    if (!handle) return;
+    const nome = handle.dataset.resizer;
+    const box = document.querySelector(`[data-resize="${nome}"]`);
+    // Doppio clic: tutto il contenuto; un altro doppio clic: altezza normale.
+    const tutto = state.altezze[nome] === 0;
+    state.altezze[nome] = tutto ? ALTEZZA_PREDEFINITA : 0;
+    if (box) box.style.maxHeight = tutto ? ALTEZZA_PREDEFINITA + "px" : "none";
+    salvaAltezze();
+  });
+})();
+
 function overviewPage(){
   const s = state.summary;
-  return `
+  return `${avvisoApi()}
   <div class="kpis">
     <div class="kpi green">
-      <div class="kpiTop"><div class="kpiIcon">▤</div><div>
+      <div class="kpiTop"><div class="kpiIcon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg></div><div>
         <div class="kpiValue">${s.total_servers ?? 0}</div>
         <div class="kpiLabel">Server totali</div></div></div>
       <div class="kpiSub">
@@ -908,7 +1152,7 @@ function overviewPage(){
         <span class="redtxt">${s.critical_servers ?? 0} Critical</span></div>
     </div>
     <div class="kpi green">
-      <div class="kpiTop"><div class="kpiIcon">♨</div><div>
+      <div class="kpiTop"><div class="kpiIcon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z"/><path d="M12 9v6"/></svg></div><div>
         <div class="kpiValue">${fmt(s.avg_temperature, " °C")}</div>
         <div class="kpiLabel">Temperatura aspirazione</div></div></div>
       <div class="kpiSub">Min ${fmt(s.min_temperature, " °C")} <span class="sep">|</span>
@@ -916,13 +1160,16 @@ function overviewPage(){
         Picco sensori ${fmt(s.peak_temperature, " °C")}</div>
     </div>
     <div class="kpi blue">
-      <div class="kpiTop"><div class="kpiIcon">ϟ</div><div>
+      <div class="kpiTop"><div class="kpiIcon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div><div>
         <div class="kpiValue">${fmtInt(s.total_power, " W")}</div>
         <div class="kpiLabel">Consumo totale</div></div></div>
-      <div class="kpiSub">Media per server: ${fmtInt(s.avg_power, " W")}</div>
+      <div class="kpiSub">Media per server: ${fmtInt(s.avg_power, " W")}${
+        s.power_measured && s.power_measured < (s.total_servers || 0)
+          ? ` <span class="sep">|</span> misurati ${s.power_measured} su ${s.total_servers}`
+          : ""}</div>
     </div>
     <div class="kpi purple">
-      <div class="kpiTop"><div class="kpiIcon">⚑</div><div>
+      <div class="kpiTop"><div class="kpiIcon"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg></div><div>
         <div class="kpiValue">${s.events_24h ?? 0}</div>
         <div class="kpiLabel">Eventi ultime 24h</div></div></div>
       <div class="kpiSub">
@@ -939,7 +1186,7 @@ function overviewPage(){
           <h2>Elenco server</h2>
           <button class="add" data-act="add-server">＋ &nbsp;Aggiungi server</button>
         </div>
-        <div class="scrollY">
+        <div class="scrollY" data-resize="servers"${stileAltezza("servers")}>
           <table class="dataTable serverTable">
             <thead><tr><th>Nome</th><th>Modello</th><th>Stato</th>
               <th>Temp</th><th>Potenza</th><th>Azioni</th></tr></thead>
@@ -947,11 +1194,13 @@ function overviewPage(){
           </table>
           <div class="serverCards">${serverCards()}</div>
         </div>
+        ${maniglia("servers")}
       </div>
       <div class="panel eventsPanel">
         <div class="panelHead"><h2>Eventi recenti</h2>
           <button class="boxLink" data-act="goto-events">Vedi tutti →</button></div>
-        <div class="scrollY">${recentEventsTable()}</div>
+        <div class="scrollY" data-resize="events"${stileAltezza("events")}>${recentEventsTable()}</div>
+        ${maniglia("events")}
       </div>
     </div>
     <div class="detail">${detailPanel()}</div>
@@ -965,13 +1214,17 @@ function matchesQuery(s){
     .some((v) => String(v || "").toLowerCase().includes(q));
 }
 
+function elencoVuoto(){
+  if (state.servers.length) return "<b>Nessun risultato</b>Prova con un altro termine di ricerca.";
+  if (state.apiError) return "<b>Elenco non disponibile</b>Il motivo è indicato in cima alla pagina.";
+  return "<b>Nessun server monitorato</b>Aggiungi il primo iLO con il pulsante qui sopra.";
+}
+
 function serverRows(){
   const list = state.servers.filter(matchesQuery);
   if (!list.length){
     return `<tr><td colspan="6"><div class="empty">
-      <b>${state.servers.length ? "Nessun risultato" : "Nessun server monitorato"}</b>
-      ${state.servers.length ? "Prova con un altro termine di ricerca."
-        : "Aggiungi il primo iLO con il pulsante qui sopra."}</div></td></tr>`;
+      ${elencoVuoto()}</div></td></tr>`;
   }
   return list.map((s) => {
     const cls = s.last_collect_status === "ERROR" ? "bad"
@@ -990,10 +1243,10 @@ function serverRows(){
       <td>${fmtInt(s.consumed_watts, " W")}</td>
       <td class="rowActions">
         <button class="iconBtn" data-console="${s.id}"
-          title="Console remota HTML5"${hasConsole(s) ? "" : " disabled"}>▶</button>
-        <button class="iconBtn" data-ilo="${s.id}" title="Apri iLO">↗</button>
+          title="Console remota HTML5"${hasConsole(s) ? "" : " disabled"}>${IC.play}</button>
+        <button class="iconBtn" data-ilo="${s.id}" title="Apri iLO">${IC.ext}</button>
         <button class="iconBtn" data-rowmenu="${s.id}"
-          title="Accensione e riavvio">⏻</button>
+          title="Accensione e riavvio">${IC.power}</button>
       </td>
     </tr>`;
   }).join("");
@@ -1003,9 +1256,7 @@ function serverCards(){
   const list = state.servers.filter(matchesQuery);
   if (!list.length){
     return `<div class="empty">
-      <b>${state.servers.length ? "Nessun risultato" : "Nessun server monitorato"}</b>
-      ${state.servers.length ? "Prova con un altro termine di ricerca."
-        : "Aggiungi il primo iLO con il pulsante qui sopra."}</div>`;
+      ${elencoVuoto()}</div>`;
   }
   return list.map((s) => {
     const cls = s.last_collect_status === "ERROR" ? "bad"
@@ -1033,9 +1284,9 @@ function serverCards(){
       </div>
       <div class="srvCardActions">
         <button data-console="${s.id}"${hasConsole(s) ? "" : " disabled"}>
-          ▶ Console</button>
-        <button data-ilo="${s.id}">↗ iLO</button>
-        <button data-rowmenu="${s.id}">⏻ Azioni</button>
+          ${IC.play} Console</button>
+        <button data-ilo="${s.id}">${IC.ext} iLO</button>
+        <button data-rowmenu="${s.id}">${IC.power} Azioni</button>
       </div>
     </div>`;
   }).join("");
@@ -1043,6 +1294,31 @@ function serverCards(){
 
 function recentEventsTable(){
   return '<div class="empty" id="recentEventsBox">Caricamento eventi…</div>';
+}
+
+// Gli eventi si leggono per il messaggio. In tabella, sul telefono,
+// il messaggio finisce nell'ultima colonna e va a capo una parola per
+// riga; in scheda prende tutta la larghezza. Si generano entrambe e
+// il CSS sceglie, cosi' ruotare il telefono non chiede di ridisegnare.
+function eventCards(rows, opzioni){
+  const o = opzioni || {};
+  return `<div class="eventCards">${rows.map((e) => {
+    const cls = severityClass(e.severity);
+    const meta = [
+      o.server ? esc(e.server_name || "") : "",
+      o.source && e.log_source ? esc(e.log_source) : "",
+      e.message_id ? esc(e.message_id) : ""
+    ].filter(Boolean).join(" · ");
+    return `<div class="evCard ev-${cls}">
+      <div class="evTop">
+        <span class="${cls} evSev">${severityIcon(e.severity)}
+          ${esc(e.severity || "Informativo")}</span>
+        <span class="evWhen">${dateLabel(e.event_created)}</span>
+      </div>
+      <div class="evMsg">${esc(e.message || "(nessun messaggio)")}</div>
+      ${meta ? `<div class="evMeta">${meta}</div>` : ""}
+    </div>`;
+  }).join("")}</div>`;
 }
 
 async function loadRecentEvents(){
@@ -1055,14 +1331,16 @@ async function loadRecentEvents(){
         + 'Nessun evento nelle ultime 24 ore.</div>';
       return;
     }
-    box.outerHTML = `<table class="dataTable" id="recentEventsBox">
+    box.outerHTML = `<div id="recentEventsBox">
+      <table class="dataTable eventTable">
       <thead><tr><th>Data/Ora</th><th>Server</th><th>Severità</th><th>Messaggio</th></tr></thead>
       <tbody>${rows.map((e) => `<tr>
         <td class="nowrap">${dateLabel(e.event_created)}</td>
         <td>${esc(e.server_name)}</td>
         <td class="${severityClass(e.severity)} nowrap">${severityIcon(e.severity)}
           ${esc(e.severity || "Informativo")}</td>
-        <td>${esc(e.message || "")}</td></tr>`).join("")}</tbody></table>`;
+        <td>${esc(e.message || "")}</td></tr>`).join("")}</tbody></table>
+      ${eventCards(rows, {server: true})}</div>`;
   } catch (err){
     box.textContent = "Eventi non disponibili: " + err.message;
   }
@@ -1091,14 +1369,14 @@ function detailPanel(){
   return `<div class="panel">
     <div class="detailHead">
       <div class="detailTitle">
-        <div class="serverGlyph">▤</div>
+        <div class="serverGlyph"><svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg></div>
         <div>
           <div class="detailName">${esc(s.name)}
             <span class="badge ${cls === "unknown" ? "off" : cls}">${esc(badgeLabel)}</span>
             ${s.power_state && s.power_state !== "On"
               ? `<span class="badge off">${esc(s.power_state)}</span>` : ""}</div>
           <div class="detailMeta">${esc(s.model || "—")} <span class="sep">|</span>
-            ${esc(s.ilo_version || "iLO")} <span class="sep">|</span>
+            ${esc(iloGen(s))} <span class="sep">|</span>
             SN: ${esc(s.serial_number || "—")} <span class="sep">|</span>
             IP iLO: ${esc(s.ilo_ip)}</div>
         </div>
@@ -1106,8 +1384,8 @@ function detailPanel(){
       <div class="actions">
         <button class="action" data-act="menu">Azioni ⌄</button>
         <button class="action" data-act="console"${hasConsole(s) ? ""
-          : ' disabled title="Richiede licenza iLO Advanced"'}>Console ▶</button>
-        <button class="action green" data-act="open-ilo">Apri iLO ↗</button>
+          : ' disabled title="Richiede licenza iLO Advanced"'}>Console ${IC.play}</button>
+        <button class="action green" data-act="open-ilo">Apri iLO ${IC.ext}</button>
         <div class="menu hidden" id="actionMenu">
           <button data-act="collect-now">Aggiorna dati adesso</button>
           <button data-act="toggle-led">Accendi/spegni LED UID</button>
@@ -1119,6 +1397,7 @@ function detailPanel(){
           <button data-act="power-force_off">Spegnimento forzato</button>
           <hr>
           <button data-act="edit-server">Modifica server…</button>
+          <button data-act="agent-script">Script dischi per Windows…</button>
           <button class="danger" data-act="delete-server">Rimuovi server…</button>
         </div>
       </div>
@@ -1173,7 +1452,9 @@ function overviewTab(d){
         : "ultimo avvio non riportato da iLO"}</div></div>
     <div class="mini"><div class="miniTitle">Consumo</div>
       <div class="miniValue">${fmtInt(p.consumed_watts, " W")}</div>
-      <div class="miniSub">Media ultime 24h: ${fmtInt(p.average_watts, " W")}</div></div>
+      <div class="miniSub">${num(p.consumed_watts) === null
+        ? "l'alimentatore non misura il consumo"
+        : "Media ultime 24h: " + fmtInt((d.power_24h || {}).avg_watts, " W")}</div></div>
     <div class="mini"><div class="miniTitle">Temperatura max</div>
       <div class="miniValue ${tempClass(maxTemp) === "bad" ? "redtxt"
         : tempClass(maxTemp) === "warn" ? "warntxt" : "oktxt"}">
@@ -1198,7 +1479,7 @@ function overviewTab(d){
     <div class="box">
       <div class="boxHead">Ventole
         <button class="boxLink" data-tab-link="fans">Vedi tutte →</button></div>
-      <div class="boxBody">${(d.fans || []).length ? (d.fans || []).slice(0, 6).map((x) => {
+      <div class="boxBody">${presenti(d.fans).length ? presenti(d.fans).slice(0, 6).map((x) => {
         const v = num(x.speed_percent) || 0;
         const c = v >= 80 ? "bad" : v >= 60 ? "warn" : "";
         return `<div class="line"><span>${esc(x.fan_name || x.fan_id)}</span>
@@ -1217,7 +1498,8 @@ function overviewTab(d){
           <span>PSU ${esc(x.psu_id || "")}</span>
           <span class="val"><b class="${health(x.health) === "ok" ? "statusOk" : "statusWarn"}">
           ● ${esc(x.health || "—")}</b>
-          <span>${fmtInt(x.power_output_watts ?? x.capacity_watts, " W")}</span></span>
+          <span title="Capacità ${fmtInt(x.capacity_watts, " W")}">
+            ${fmtInt(x.power_output_watts, " W")}</span></span>
           </div>`).join("")
         : emptyBox("Nessun alimentatore rilevato.")}</div>
     </div>
@@ -1356,12 +1638,15 @@ function thermalTab(d){
 }
 
 function fansTab(d){
-  const fans = d.fans || [];
+  const fans = presenti(d.fans);
+  const vuoti = (d.fans || []).length - fans.length;
   if (!fans.length) return `<div class="box">${emptyBox("Nessuna ventola rilevata.")}</div>`;
   const avg = fans.reduce((a, x) => a + (num(x.speed_percent) || 0), 0) / fans.length;
   return `<div class="miniGrid">
     <div class="mini"><div class="miniTitle">Ventole</div>
-      <div class="miniValue">${fans.length}</div><div class="miniSub">rilevate</div></div>
+      <div class="miniValue">${fans.length}</div><div class="miniSub">${vuoti
+        ? `installate, ${vuoti} alloggiament${vuoti === 1 ? "o" : "i"} vuot${vuoti === 1 ? "o" : "i"}`
+        : "installate"}</div></div>
     <div class="mini"><div class="miniTitle">Velocità media</div>
       <div class="miniValue">${fmtInt(avg, " %")}</div><div class="miniSub">di tutte le ventole</div></div>
     <div class="mini"><div class="miniTitle">Velocità massima</div>
@@ -1392,13 +1677,15 @@ function powerTab(d){
   return `<div class="miniGrid">
     <div class="mini"><div class="miniTitle">Consumo attuale</div>
       <div class="miniValue">${fmtInt(p.consumed_watts, " W")}</div>
-      <div class="miniSub">rilevato dall'iLO</div></div>
-    <div class="mini"><div class="miniTitle">Media</div>
-      <div class="miniValue">${fmtInt(p.average_watts, " W")}</div>
-      <div class="miniSub">finestra riportata da iLO</div></div>
-    <div class="mini"><div class="miniTitle">Picco</div>
-      <div class="miniValue">${fmtInt(p.maximum_watts, " W")}</div>
-      <div class="miniSub">minimo ${fmtInt(p.minimum_watts, " W")}</div></div>
+      <div class="miniSub">${num(p.consumed_watts) === null
+        ? "non misurato dall'alimentatore" : "rilevato dall'iLO"}</div></div>
+    <div class="mini"><div class="miniTitle">Media 24 ore</div>
+      <div class="miniValue">${fmtInt((d.power_24h || {}).avg_watts, " W")}</div>
+      <div class="miniSub">${(d.power_24h || {}).samples || 0} rilevazioni
+        · iLO ${fmtInt(p.average_watts, " W")}</div></div>
+    <div class="mini"><div class="miniTitle">Picco 24 ore</div>
+      <div class="miniValue">${fmtInt((d.power_24h || {}).max_watts, " W")}</div>
+      <div class="miniSub">minimo ${fmtInt((d.power_24h || {}).min_watts, " W")}</div></div>
     <div class="mini"><div class="miniTitle">Capacità</div>
       <div class="miniValue">${fmtInt(p.power_capacity_watts, " W")}</div>
       <div class="miniSub">${psus.length} alimentatori</div></div>
@@ -1428,55 +1715,83 @@ function powerTab(d){
     <div class="boxBody" id="powerChartBox"><div class="empty">Caricamento…</div></div></div>`;
 }
 
+function pallino(h){
+  const x = health(h);
+  return x === "ok" ? "statusOk" : x === "unknown" ? "" : x === "bad" ? "statusBad" : "statusWarn";
+}
+
 function storageTab(d){
-  const drives = d.drives || [];
+  const drives = presenti(d.drives || []);
   const volumes = d.volumes || [];
-  return `<div class="grid2">
+  // Ogni SSD NVMe compare nell'elenco Redfish anche come "controller"
+  // con il proprio nome di modello: non e' un controller, e' il disco.
+  const modelliDischi = new Set(drives.map((x) => String(x.model || "").trim()).filter(Boolean));
+  const controllers = (d.storage_controllers || [])
+    .filter((x) => !modelliDischi.has(String(x.model || "").trim()));
+  const soglie = {warn: 30, crit: 10};
+  // Gli S100i e i SATA integrati non hanno cache: colonna inutile.
+  const conCache = controllers.some((x) => num(x.cache_mib));
+  return `${drives.length ? "" : avvisoAms(d.server, "i dischi collegati al controller SATA integrato")}<div class="grid2">
     <div class="box"><div class="boxHead">Controller</div><div class="boxBody flush">
-      ${(d.storage_controllers || []).length ? `<table class="dataTable">
-        <thead><tr><th>Modello</th><th>Firmware</th><th>Cache</th><th>Stato</th></tr></thead>
-        <tbody>${(d.storage_controllers || []).map((x) => `<tr>
+      ${controllers.length ? `<table class="dataTable">
+        <thead><tr><th>Modello</th><th>Firmware</th>${conCache ? "<th>Cache</th>" : ""}<th>Stato</th></tr></thead>
+        <tbody>${controllers.map((x) => `<tr>
           <td>${esc(x.model || x.controller_id)}</td>
           <td>${esc(x.firmware || "—")}</td>
-          <td>${fmtInt(x.cache_mib, " MB")}</td>
-          <td class="${health(x.health) === "ok" ? "statusOk" : "statusWarn"}">
-            ● ${esc(x.health || "—")}</td></tr>`).join("")}</tbody></table>`
+          ${conCache ? `<td class="nowrap">${num(x.cache_mib) ? fmtInt(x.cache_mib, " MB") : "—"}</td>` : ""}
+          <td class="nowrap ${pallino(x.health)}">● ${esc(x.health || "n/d")}</td></tr>`).join("")}</tbody></table>`
         : emptyBox("Nessun controller rilevato.")}</div></div>
 
     <div class="box"><div class="boxHead">Volumi logici</div><div class="boxBody flush">
       ${volumes.length ? `<table class="dataTable">
         <thead><tr><th>Nome</th><th>RAID</th><th>Capacità</th><th>Stato</th></tr></thead>
         <tbody>${volumes.map((x) => `<tr>
-          <td>${esc(x.name || x.volume_id)}</td>
-          <td>${esc(x.raid_type || "—")}</td>
-          <td>${tb(x.capacity_bytes)}</td>
-          <td class="${health(x.health) === "ok" ? "statusOk" : "statusWarn"}">
-            ● ${esc(x.health || "—")}</td></tr>`).join("")}</tbody></table>`
+          <td>${esc(x.name || x.volume_id).replace(/_/g, "_<wbr>")}</td>
+          <td class="nowrap">${esc(x.raid_type || "—")}</td>
+          <td class="nowrap">${tb(x.capacity_bytes)}</td>
+          <td class="nowrap ${pallino(x.health)}">● ${esc(x.health || "n/d")}</td></tr>`).join("")}</tbody></table>`
         : emptyBox("Nessun volume rilevato.")}</div></div>
   </div>
   <div class="box fullPanel"><div class="boxHead">Dischi fisici
     <span class="boxLink">${drives.length} dischi</span></div>
-    <div class="boxBody flush">${drives.length ? `<table class="dataTable">
-      <thead><tr><th>Bay</th><th>Modello</th><th>Tipo</th><th>Interfaccia</th>
+    <div class="boxBody flush">${drives.length ? `<table class="dataTable driveTable">
+      <thead><tr><th>Bay</th><th>Modello e seriale</th><th>Tipo</th>
         <th>Capacità</th><th>Vita residua</th><th>Stato</th></tr></thead>
       <tbody>${drives.map((x) => `<tr>
-        <td>${esc(x.bay || x.drive_id)}</td>
-        <td>${esc(x.model || "—")}</td>
-        <td>${esc(x.media_type || "—")}</td>
-        <td>${esc(x.protocol || "—")}${x.negotiated_speed_gbs
-          ? " · " + fmtInt(x.negotiated_speed_gbs, " Gb/s") : ""}</td>
-        <td>${tb(x.capacity_bytes)}</td>
-        <td>${x.media_life_left_percent !== null && x.media_life_left_percent !== undefined
-          ? fmtInt(x.media_life_left_percent, " %") : "—"}</td>
-        <td class="${x.failure_predicted ? "statusBad"
-          : health(x.health) === "ok" ? "statusOk" : "statusWarn"}">
-          ● ${x.failure_predicted ? "Guasto previsto" : esc(x.health || "—")}</td>
-      </tr>`).join("")}</tbody></table>` : emptyBox("Nessun disco rilevato.")}</div></div>`;
+        <td class="nowrap" title="${esc(x.bay || "")}">${esc(bayLabel(x))}</td>
+        <td title="${esc(tooltipSmart(x))}">${esc(x.model || "—")}${daWindows(x)
+          ? ' <span class="fonteWin">Windows</span>' : ""}${x.serial_number
+          ? `<div class="subLine serialTxt">${esc(x.serial_number)}</div>` : ""}</td>
+        <td class="nowrap">${esc(x.media_type || (isHdd(x) ? "HDD" : "—"))}${x.protocol || x.negotiated_speed_gbs
+          ? `<div class="subLine">${esc(x.protocol || "")}${num(x.negotiated_speed_gbs)
+            ? " · " + fmtInt(x.negotiated_speed_gbs, " Gb/s") : ""}</div>` : ""}</td>
+        <td class="nowrap">${tb(x.capacity_bytes)}${dettagliSmart(x)
+          ? `<div class="subLine">${dettagliSmart(x)}</div>` : ""}</td>
+        <td>${vitaDisco(x, soglie)}</td>
+        <td class="nowrap ${salute(x)}">● ${esc(etichettaStato(x))}</td>
+      </tr>`).join("")}</tbody></table>
+      <div class="driveCards">${drives.map((x) => schedaDisco(x, soglie, false)).join("")}</div>`
+      : emptyBox("Nessun disco rilevato.")}</div></div>`;
+}
+
+// L'iLO vede IP e stato delle schede di rete, e i dischi sul SATA
+// integrato, solo tramite l'Agentless Management Service che gira nel
+// sistema operativo. Se non e' attivo lo diciamo, invece di lasciare
+// pensare a un errore di raccolta.
+function avvisoAms(s, cosa){
+  const ams = String((s && s.ams_status) || "");
+  if (!ams || ams.toLowerCase() === "ready") return "";
+  return `<div class="hintBox">
+    <b>Agentless Management Service non attivo</b> (l'iLO lo segnala come
+    "${esc(ams)}"). È il servizio HPE che dal sistema operativo
+    ${s.host_os ? "(" + esc(s.host_os) + ") " : ""}passa all'iLO ${cosa}:
+    senza, l'iLO non li conosce. Si installa dal Service Pack for ProLiant
+    o come pacchetto "Agentless Management Service" per il sistema in uso.</div>`;
 }
 
 function networkTab(d){
   const nics = d.network || [];
-  return `<div class="box"><div class="boxHead">Interfacce di rete
+  return `${avvisoAms(d.server, "indirizzi IP, stato del collegamento e velocità delle schede di rete")}<div class="box"><div class="boxHead">Interfacce di rete
     <span class="boxLink">${nics.length} interfacce</span></div>
     <div class="boxBody flush">${nics.length ? `<table class="dataTable">
       <thead><tr><th>Interfaccia</th><th>MAC</th><th>IPv4</th><th>Link</th>
@@ -1496,7 +1811,8 @@ function eventsTab(d){
   const events = d.events || [];
   return `<div class="box"><div class="boxHead">Registro eventi iLO
     <button class="boxLink" data-act="goto-events">Apri la pagina Eventi →</button></div>
-    <div class="boxBody flush"><div class="scrollY">${events.length ? `<table class="dataTable">
+    <div class="boxBody flush"><div class="scrollY">${events.length
+      ? eventCards(events, {source: true}) + `<table class="dataTable eventTable">
       <thead><tr><th>Data/Ora</th><th>Severità</th><th>ID messaggio</th><th>Messaggio</th></tr></thead>
       <tbody>${events.map((e) => `<tr>
         <td class="nowrap">${dateLabel(e.event_created)}</td>
@@ -1515,6 +1831,7 @@ function infoTab(d){
       <table class="infoTable">
         <tr><td>Nome in monitoraggio</td><td>${esc(s.name)}</td></tr>
         <tr><td>Hostname</td><td>${esc(s.hostname || "—")}</td></tr>
+        <tr><td>Sistema operativo</td><td>${esc(s.host_os || "—")}</td></tr>
         <tr><td>Gruppo</td><td>${esc(s.server_group || "—")}</td></tr>
         <tr><td>Produttore</td><td>${esc(s.manufacturer || "—")}</td></tr>
         <tr><td>Modello</td><td>${esc(s.model || "—")}</td></tr>
@@ -1525,10 +1842,14 @@ function infoTab(d){
       <table class="infoTable">
         <tr><td>Indirizzo iLO</td><td>${esc(s.ilo_ip)}</td></tr>
         <tr><td>Utente</td><td>${esc(s.ilo_user || "—")}</td></tr>
-        <tr><td>Generazione</td><td>${esc(s.ilo_version || "—")}</td></tr>
+        <tr><td>Generazione</td><td>${esc(iloGen(s))}</td></tr>
         <tr><td>Firmware</td><td>${esc(s.ilo_firmware || "—")}</td></tr>
         <tr><td>BIOS</td><td>${esc(s.bios_version || "—")}</td></tr>
         <tr><td>Licenza</td><td>${esc(s.ilo_license || "—")}</td></tr>
+        <tr><td>Agentless Management</td><td class="${!s.ams_status ? ""
+          : String(s.ams_status).toLowerCase() === "ready" ? "statusOk" : "statusWarn"}">${esc(
+          !s.ams_status ? "—" : String(s.ams_status).toLowerCase() === "ready"
+          ? "attivo" : "non attivo (" + s.ams_status + ")")}</td></tr>
         <tr><td>Alimentazione</td><td>${esc(s.power_state || "—")}</td></tr>
         <tr><td>LED UID</td><td>${esc(s.indicator_led || "—")}</td></tr>
         <tr><td>Monitoraggio</td><td>${s.enabled ? "attivo" : "sospeso"}</td></tr>
@@ -1662,6 +1983,7 @@ function wireDetailActions(){
       if (act === "goto-events") return go("events");
       if (!state.detail) return;
       if (act === "edit-server") return openServerModal(state.detail.server);
+      if (act === "agent-script") return openAgentModal(state.detail.server);
       if (act === "delete-server") return openDeleteModal(state.detail.server);
       if (act === "console"){
         openConsole(state.detail.server);
@@ -1802,7 +2124,7 @@ function lineChart(seriesList, unit, height){
 
 function serversPage(){
   const list = state.servers.filter(matchesQuery);
-  return `<div class="pageToolbar">
+  return `${avvisoApi()}<div class="pageToolbar">
     <div><h2>Inventario server</h2>
       <div class="sub">${state.servers.length} server configurati,
         ${state.servers.filter((s) => s.enabled).length} in monitoraggio attivo</div></div>
@@ -1835,10 +2157,10 @@ function serversPage(){
           <td class="nowrap">${relative(s.last_collect_at)}</td>
           <td class="nowrap rowActions">
             <button class="iconBtn" data-console="${s.id}"
-              title="Console remota HTML5"${hasConsole(s) ? "" : " disabled"}>▶</button>
-            <button class="iconBtn" data-ilo="${s.id}" title="Apri iLO">↗</button>
+              title="Console remota HTML5"${hasConsole(s) ? "" : " disabled"}>${IC.play}</button>
+            <button class="iconBtn" data-ilo="${s.id}" title="Apri iLO">${IC.ext}</button>
             <button class="iconBtn" data-rowmenu="${s.id}"
-              title="Accensione e riavvio">⏻</button>
+              title="Accensione e riavvio">${IC.power}</button>
             <button class="boxLink" data-edit="${s.id}"
               style="margin-left:8px">Modifica</button> ·
             <button class="boxLink" data-remove="${s.id}">Rimuovi</button></td>
@@ -1921,7 +2243,7 @@ function thermalPage(data){
     (byServer[s.server_name] = byServer[s.server_name] || []).push(s);
   });
   const fansByServer = {};
-  fans.forEach((f) => {
+  presenti(fans).forEach((f) => {
     (fansByServer[f.server_name] = fansByServer[f.server_name] || []).push(f);
   });
 
@@ -1968,6 +2290,337 @@ function thermalPage(data){
           }).join("")}</div></div>` : ""}
       </div></div>`;
   }).join("")}`;
+}
+
+/* ============================================================
+   Pagina Dischi: tutti i dischi fisici di tutti i server
+   ============================================================ */
+
+// num(null) vale 0, e un disco senza dato non e' un disco esaurito.
+function vitaNum(x){
+  const v = x.media_life_left_percent;
+  return v === null || v === undefined || v === "" ? null : num(v);
+}
+
+// "Slot=12:Port=1I:Box=1:Bay=2" diventa "1I:1:2", la notazione che
+// HPE usa ovunque e che SmartStorage riporta gia' cosi'.
+function bayLabel(x){
+  const raw = String(x.bay || x.drive_id || "");
+  const m = raw.match(/Port=([^:]+):Box=([^:]+):Bay=([^:]+)/i);
+  return m ? `${m[1]}:${m[2]}:${m[3]}` : raw;
+}
+
+// SmartStorage dichiara l'usura consumata. Un valore oltre 100 non e'
+// un'usura vera: e' il caso documentato da HPE "SmartSSD Wear Gauge log
+// is full". Dopo circa tre anni di funzionamento un registro specifico
+// HPE si riempie e i suoi dati (usura, ore di accensione) diventano
+// inattendibili; il disco funziona normalmente e non va sostituito per
+// questo. L'usura vera resta leggibile dal sistema operativo via SMART.
+function oltreNominale(x){
+  const u = num(x.endurance_used_percent);
+  return vitaNum(x) === null && u !== null && u > 100 ? u : null;
+}
+
+// Dischi letti da Windows (script sul server): hanno i contatori SMART.
+function daWindows(x){ return String(x.source || "") === "os"; }
+
+function erroriSmart(x){
+  const e = num(x.uncorrected_errors);
+  return e !== null && e > 0 ? e : 0;
+}
+
+// Riga sotto la capacita': ore, temperatura, errori.
+function dettagliSmart(x){
+  const parti = [];
+  if (oreAccensione(x)) parti.push(oreAccensione(x));
+  const t = num(x.temperature_c);
+  if (t !== null && t > 0) parti.push(fmtInt(t, " °C"));
+  const e = erroriSmart(x);
+  if (e) parti.push(`<span class="warntxt">${e} errori</span>`);
+  return parti.join(" · ");
+}
+
+// Tutti i contatori SMART, per il suggerimento al passaggio del mouse.
+function tooltipSmart(x){
+  let s = {};
+  try { s = JSON.parse(x.smart_json || "{}") || {}; } catch (e){ s = {}; }
+  if (Array.isArray(s.righe) && s.righe.length){
+    return "SMART letto da Windows\n" + s.righe.map((r) => r[0] + ": " + r[1]).join("\n");
+  }
+  const etichette = [
+    ["usura", "Usura (%)"], ["temperatura", "Temperatura °C"],
+    ["temperatura_max", "Temperatura massima °C"],
+    ["ore_accensione", "Ore di accensione"], ["cicli_accensione", "Cicli di accensione"],
+    ["errori_lettura", "Errori di lettura non corretti"],
+    ["errori_scrittura", "Errori di scrittura non corretti"],
+    ["errori_lettura_corretti", "Errori di lettura corretti"],
+    ["errori_scrittura_corretti", "Errori di scrittura corretti"],
+    ["latenza_lettura_max_ms", "Latenza lettura max (ms)"],
+    ["latenza_scrittura_max_ms", "Latenza scrittura max (ms)"],
+    ["firmware", "Firmware"], ["bus", "Collegamento"], ["posizione", "Posizione"],
+  ];
+  const righe = etichette
+    .filter(([k]) => s[k] !== undefined && s[k] !== null && s[k] !== "")
+    .map(([k, nome]) => `${nome}: ${s[k]}`);
+  if (!righe.length) return "";
+  return "SMART letto da Windows\n" + righe.join("\n");
+}
+
+function oreAccensione(x){
+  // Con il registro HPE pieno anche le ore sono inattendibili.
+  if (oltreNominale(x) !== null) return "";
+  const h = num(x.power_on_hours);
+  if (h === null) return "";
+  return `<span title="${h.toLocaleString("it-IT")} ore di accensione">${durataOre(h)}</span>`;
+}
+
+// 44844 ore -> "5,1 anni"; sotto l'anno mesi, sotto il mese giorni.
+function durataOre(h){
+  if (h >= 8760){
+    const anni = h / 8760;
+    return anni.toLocaleString("it-IT", {maximumFractionDigits: 1}) + (anni < 1.05 ? " anno" : " anni");
+  }
+  if (h >= 720){
+    const mesi = Math.round(h / 730);
+    return mesi + (mesi === 1 ? " mese" : " mesi");
+  }
+  if (h >= 48) return Math.round(h / 24) + " giorni";
+  return Math.round(h) + " ore";
+}
+
+function isHdd(x){
+  const t = String(x.media_type || "").toUpperCase();
+  return t === "HDD" || (t !== "SSD" && (num(x.rotation_rpm) || 0) > 0);
+}
+
+// "ok", "warn", "bad" o "" (nessun giudizio possibile) per un disco.
+function statoDisco(x, soglie){
+  const h = health(x.health);
+  const vita = vitaNum(x);
+  if (x.failure_predicted || h === "bad") return "bad";
+  if (vita !== null && vita <= soglie.crit) return "bad";
+  if (h === "warn") return "warn";
+  if (erroriSmart(x)) return "warn";
+  if (vita !== null && vita <= soglie.warn) return "warn";
+  return h === "ok" ? "ok" : "";
+}
+
+// Classe del pallino di stato: solo la salute riportata dal disco.
+function salute(x){
+  if (x.failure_predicted) return "statusBad";
+  const h = health(x.health);
+  return h === "bad" ? "statusBad" : h === "warn" ? "statusWarn" : h === "ok" ? "statusOk" : "";
+}
+
+function etichettaStato(x){
+  if (x.failure_predicted) return "Guasto previsto";
+  return x.health || x.state || "—";
+}
+
+function vitaDisco(x, soglie, perScheda){
+  const vita = vitaNum(x);
+  const oltre = oltreNominale(x);
+  if (oltre !== null){
+    return `<span class="lifeNa lifeOver" title="Il registro HPE SmartSSD Wear Gauge del disco è pieno (valore riportato: ${fmtInt(oltre, "%")}, non attendibile). Secondo HPE capita ai dischi con più di tre anni di funzionamento: il disco funziona normalmente e non va sostituito per questo. L'usura reale si legge dal sistema operativo tramite SMART.">registro HPE pieno</span>`;
+  }
+  if (vita === null && !x.media_type && num(x.rotation_rpm) === null){
+    // Tipo sconosciuto (iLO 2): non si puo' dire se manca un dato.
+    return '<span class="lifeNa" title="L\'iLO non riporta tipo né usura di questo disco">n/d</span>';
+  }
+  if (vita === null){
+    return isHdd(x)
+      ? '<span class="lifeNa" title="I dischi meccanici non hanno un indicatore di usura">n/d (HDD)</span>'
+      : '<span class="lifeNa" title="Il controller non riporta l\'usura di questo SSD">non riportata</span>';
+  }
+  const cls = vita <= soglie.crit ? "bad" : vita <= soglie.warn ? "warn" : "";
+  const larghezza = Math.max(2, Math.min(100, vita));
+  const testo = `<b class="${cls === "bad" ? "redtxt" : cls === "warn" ? "warntxt" : "oktxt"}">${fmtInt(vita, " %")}</b>`;
+  const barra = `<span class="bar"><i class="${cls}" style="width:${larghezza}%"></i></span>`;
+  return perScheda ? barra + testo : `<span class="lifeCell">${barra}${testo}</span>`;
+}
+
+function dischiFiltrati(data){
+  const v = state.drivesView;
+  const soglie = {warn: num(data.life_warning) ?? 30, crit: num(data.life_critical) ?? 10};
+  const q = (state.query || "").toLowerCase();
+  let rows = presenti(data.drives || []);
+  if (q){
+    rows = rows.filter((x) => [x.server_name, x.model, x.serial_number, x.bay, x.ilo_ip]
+      .some((c) => String(c || "").toLowerCase().includes(q)));
+  }
+  if (v.filtro === "ssd") rows = rows.filter((x) => !isHdd(x));
+  else if (v.filtro === "hdd") rows = rows.filter(isHdd);
+  else if (v.filtro === "attenzione")
+    rows = rows.filter((x) => ["warn", "bad"].includes(statoDisco(x, soglie)));
+  if (v.ordine === "server"){
+    rows = rows.slice().sort((a, b) =>
+      String(a.server_name).localeCompare(String(b.server_name), "it")
+      || String(a.bay || a.drive_id).localeCompare(String(b.bay || b.drive_id), "it",
+           {numeric: true}));
+  }
+  // altrimenti resta l'ordine del server: vita crescente, ignota in fondo
+  return {rows, soglie};
+}
+
+function drivesPage(data){
+  const tutti = presenti(data.drives || []);
+  const senzaDati = data.servers_without_data || [];
+  if (!tutti.length){
+    return `<div class="panel"><div class="empty"><b>Nessun disco rilevato</b>
+      L'inventario dello storage si aggiorna ogni ora; per leggerlo subito
+      esegui una raccolta completa.</div></div>`;
+  }
+  const {rows, soglie} = dischiFiltrati(data);
+  const v = state.drivesView;
+
+  const ssd = tutti.filter((x) => !isHdd(x));
+  const conVita = tutti.filter((x) => vitaNum(x) !== null);
+  const peggiore = conVita.slice().sort((a, b) =>
+    vitaNum(a) - vitaNum(b))[0];
+  const daControllare = tutti.filter((x) => ["warn", "bad"].includes(statoDisco(x, soglie)));
+  const critici = daControllare.filter((x) => statoDisco(x, soglie) === "bad");
+  const serverCount = new Set(tutti.map((x) => x.server_id)).size;
+  const vitaMin = peggiore ? vitaNum(peggiore) : null;
+  const clsMin = vitaMin === null ? "blue" : vitaMin <= soglie.crit ? "red"
+    : vitaMin <= soglie.warn ? "amber" : "green";
+  const icoDisco = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="11" r="4"/><path d="M12 11h.01M8 18h3"/></svg>';
+  const icoVita = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 11v2"/><path d="M6 11v2"/></svg>';
+  const icoAvv = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></svg>';
+  const icoServer = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg>';
+
+  const opt = (val, testo, cur) =>
+    `<option value="${val}" ${cur === val ? "selected" : ""}>${testo}</option>`;
+
+  return `<div class="kpis drvKpis">
+    <div class="kpi blue">
+      <div class="kpiTop"><div class="kpiIcon">${icoDisco}</div><div>
+        <div class="kpiValue">${tutti.length}</div>
+        <div class="kpiLabel">Dischi fisici</div></div></div>
+      <div class="kpiSub">${ssd.length} SSD <span class="sep">|</span>
+        ${tutti.length - ssd.length} HDD</div>
+    </div>
+    <div class="kpi ${clsMin}">
+      <div class="kpiTop"><div class="kpiIcon">${icoVita}</div><div>
+        <div class="kpiValue">${vitaMin === null ? "—" : fmtInt(vitaMin, " %")}</div>
+        <div class="kpiLabel">Vita residua minima</div></div></div>
+      <div class="kpiSub">${peggiore
+        ? esc(peggiore.server_name) + ' <span class="sep">|</span> bay ' + esc(bayLabel(peggiore))
+        : "nessun SSD riporta l'usura"}</div>
+    </div>
+    <div class="kpi ${critici.length ? "red" : daControllare.length ? "amber" : "green"}">
+      <div class="kpiTop"><div class="kpiIcon">${icoAvv}</div><div>
+        <div class="kpiValue">${daControllare.length}</div>
+        <div class="kpiLabel">Da controllare</div></div></div>
+      <div class="kpiSub">guasto previsto, stato non OK, errori o vita &le; ${soglie.warn}%</div>
+    </div>
+    <div class="kpi green">
+      <div class="kpiTop"><div class="kpiIcon">${icoServer}</div><div>
+        <div class="kpiValue">${serverCount}</div>
+        <div class="kpiLabel">Server con dati</div></div></div>
+      <div class="kpiSub">${senzaDati.length
+        ? "senza inventario: " + senzaDati.map((s) => esc(s.name || s.ilo_ip)).join(", ")
+        : "tutti i server abilitati"}</div>
+    </div>
+  </div>
+
+  <div class="pageToolbar">
+    <div><h2>Dischi fisici</h2>
+      <div class="sub">${rows.length === tutti.length ? tutti.length + " dischi"
+        : rows.length + " di " + tutti.length + " dischi"} ·
+        soglie vita: attenzione &le; ${soglie.warn}%, critica &le; ${soglie.crit}%</div></div>
+    <div class="toolbarControls">
+      <select class="field" id="drvFiltro" aria-label="Filtro">
+        ${opt("tutti", "Tutti i dischi", v.filtro)}
+        ${opt("attenzione", "Solo da controllare", v.filtro)}
+        ${opt("ssd", "Solo SSD", v.filtro)}
+        ${opt("hdd", "Solo HDD", v.filtro)}
+      </select>
+      <select class="field" id="drvOrdine" aria-label="Ordinamento">
+        ${opt("vita", "Per vita residua", v.ordine)}
+        ${opt("server", "Per server", v.ordine)}
+      </select>
+    </div>
+  </div>
+
+  <div class="panel" id="drivesPanel">${drivesList(rows, soglie)}</div>`;
+}
+
+function drivesList(rows, soglie){
+  if (!rows.length) return '<div class="empty">Nessun disco corrisponde al filtro.</div>';
+  return `<div class="boxBody flush driveTable"><table class="dataTable">
+    <thead><tr><th>Server</th><th>Bay</th><th>Modello</th><th>Seriale</th>
+      <th>Tipo</th><th>Capacità</th><th>Vita residua</th><th>Stato</th></tr></thead>
+    <tbody>${rows.map((x) => {
+      const sa = salute(x);
+      return `<tr>
+        <td><button class="linkBtn" data-drive-server="${x.server_id}">${esc(x.server_name || x.ilo_ip)}</button></td>
+        <td class="nowrap" title="${esc(x.bay || "")}">${esc(bayLabel(x))}</td>
+        <td title="${esc(tooltipSmart(x))}">${esc(x.model || "—")}${daWindows(x)
+          ? ' <span class="fonteWin">Windows</span>' : ""}</td>
+        <td><span class="serialTxt">${esc(x.serial_number || "—")}</span></td>
+        <td class="nowrap">${esc(x.media_type || (isHdd(x) ? "HDD" : "—"))}${x.protocol
+          ? " · " + esc(x.protocol) : ""}</td>
+        <td class="nowrap">${tb(x.capacity_bytes)}${dettagliSmart(x)
+          ? `<div class="subLine">${dettagliSmart(x)}</div>` : ""}</td>
+        <td>${vitaDisco(x, soglie)}</td>
+        <td class="nowrap ${sa}">● ${esc(etichettaStato(x))}</td>
+      </tr>`;
+    }).join("")}</tbody></table></div>
+  <div class="driveCards">${rows.map((x) => schedaDisco(x, soglie, true)).join("")}</div>`;
+}
+
+function schedaDisco(x, soglie, conServer){
+  const st = statoDisco(x, soglie);
+  const meta = [
+    x.serial_number ? "S/N " + esc(x.serial_number) : "",
+    esc(x.media_type || (isHdd(x) ? "HDD" : "")),
+    x.protocol ? esc(x.protocol) : "",
+    tb(x.capacity_bytes),
+    oreAccensione(x) ? oreAccensione(x) + " di accensione" : "",
+    num(x.temperature_c) ? fmtInt(x.temperature_c, " °C") : "",
+    erroriSmart(x) ? `<span class="warntxt">${erroriSmart(x)} errori</span>` : "",
+    daWindows(x) ? "da Windows" : "",
+    `<span class="${salute(x)}">● ${esc(etichettaStato(x))}</span>`
+  ].filter((c) => c && c !== "—").join(" · ");
+  return `<div class="drvCard ${st}">
+    <div class="drvTop">
+      ${conServer
+        ? `<button class="linkBtn" data-drive-server="${x.server_id}">${esc(x.server_name || x.ilo_ip)}</button>`
+        : `<b>${esc(x.model || "Modello sconosciuto")}</b>`}
+      <span class="drvBay">Bay ${esc(bayLabel(x))}</span>
+    </div>
+    ${conServer ? `<div class="drvModel">${esc(x.model || "Modello sconosciuto")}</div>` : ""}
+    <div class="drvMeta">${meta}</div>
+    <div class="drvLife">${vitaDisco(x, soglie, true)}</div>
+  </div>`;
+}
+
+// Filtri e ricerca lavorano sui dati gia' scaricati: niente
+// richiesta al server a ogni tasto.
+function ridisegnaDischi(){
+  const root = $("pageRoot");
+  if (!state.drivesData || state.page !== "drives") return;
+  disegna(root, drivesPage(state.drivesData), true);
+  wireDrivesPage();
+}
+
+function wireDrivesPage(){
+  const filtro = $("drvFiltro");
+  if (filtro) collega(filtro, "change", () => {
+    state.drivesView.filtro = filtro.value;
+    ridisegnaDischi();
+  });
+  const ordine = $("drvOrdine");
+  if (ordine) collega(ordine, "change", () => {
+    state.drivesView.ordine = ordine.value;
+    ridisegnaDischi();
+  });
+  els("[data-drive-server]").forEach((btn) => collega(btn, "click", async () => {
+    state.selectedId = Number(btn.dataset.driveServer);
+    state.tab = "storage";
+    state.detail = null;
+    await go("overview");
+  }));
 }
 
 /* ============================================================
@@ -2057,7 +2710,8 @@ async function reloadEvents(){
     const counter = $("eventsCount");
     if (counter) counter.textContent = rows.length
       + (rows.length === 500 ? " eventi (limite raggiunto)" : " eventi nel periodo selezionato");
-    body.innerHTML = rows.length ? `<table class="dataTable">
+    body.innerHTML = rows.length ? eventCards(rows, {server: true, source: true})
+      + `<table class="dataTable eventTable">
       <thead><tr><th>Data/Ora</th><th>Server</th><th>Log</th><th>Severità</th>
         <th>ID messaggio</th><th>Messaggio</th></tr></thead>
       <tbody>${rows.map((e) => `<tr>
@@ -2811,6 +3465,84 @@ function openServerModal(server){
   if (first) first.focus();
 }
 
+function nomeFileAgente(server){
+  return "ilo-monitor-dischi-"
+    + String(server.name || "").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40) + ".ps1";
+}
+
+function openAgentModal(server){
+  const file = nomeFileAgente(server);
+  const comando = `powershell -ExecutionPolicy Bypass -File .\\${file} -Installa`;
+  const stato = server.has_agent
+    ? (server.agent_last_at
+        ? `Ultimo invio <b>${relative(server.agent_last_at)}</b>${server.agent_host
+            ? " da <b>" + esc(server.agent_host) + "</b>" : ""}.`
+        : "Script generato, ma non ha ancora inviato dati.")
+    : "Nessuno script installato per questo server.";
+  $("modalRoot").innerHTML = `
+  <div class="modal" id="agentModal">
+    <div class="modalCard" style="width:min(620px,96vw)">
+      <div class="modalHead">
+        <div><h2>Dischi e SMART da Windows</h2>
+          <p>Lo script legge da Windows tutti i dischi fisici di ${esc(server.name)},
+             anche quelli che l'iLO non vede (per esempio gli NVMe su scheda PCIe),
+             con usura, temperatura, ore di accensione ed errori, e li invia
+             al pannello ogni ora.</p></div>
+        <button class="modalClose" id="agClose">×</button>
+      </div>
+      <div class="formGrid">
+        <div class="wide hint" style="font-size:12px;color:#c3d2dd">${stato}</div>
+        ${server.has_agent ? `<div class="wide formMessage" style="padding:0">
+          Scaricandolo di nuovo si crea una chiave nuova: lo script già
+          installato smette di inviare finché non lo sostituisci.</div>` : ""}
+        <div class="wide" style="font-size:12px;line-height:19px;color:#c3d2dd">
+          <b>1.</b> Scarica lo script e copialo sul server Windows.<br>
+          <b>2.</b> Apri PowerShell <b>come amministratore</b> nella cartella
+             dove l'hai copiato e lancia:
+          <pre class="codice" id="agCmd">${esc(comando)}</pre>
+          Crea l'attività pianificata (ogni ora e all'avvio) e invia subito i dati.
+          Con <code>-Mostra</code> al posto di <code>-Installa</code> vedi cosa legge
+          senza inviare nulla.
+        </div>
+      </div>
+      <div class="formMessage" id="agMsg"></div>
+      <div class="modalActions">
+        <button class="action left" id="agCopy">Copia comando</button>
+        <button class="action" id="agCancel">Chiudi</button>
+        <button class="action green" id="agGo">Scarica script</button>
+      </div>
+    </div>
+  </div>`;
+  collega($("agClose"), "click", closeModal);
+  collega($("agCancel"), "click", closeModal);
+  collega($("agentModal"), "click", (ev) => {
+    if (ev.target.id === "agentModal") closeModal();
+  });
+  collega($("agCopy"), "click", async () => {
+    try {
+      await navigator.clipboard.writeText(comando);
+      toast("Comando copiato");
+    } catch (e){
+      // Senza HTTPS il browser puo' negare gli appunti: si seleziona il testo.
+      const r = document.createRange();
+      r.selectNodeContents($("agCmd"));
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      toast("Comando selezionato: premi Ctrl+C", "warn");
+    }
+  });
+  collega($("agGo"), "click", () => {
+    const a = document.createElement("a");
+    a.href = "/api/servers/" + server.id + "/agent-script";
+    a.download = file;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    server.has_agent = true;
+    $("agMsg").className = "formMessage ok";
+    $("agMsg").textContent = "Script scaricato: " + file;
+  });
+}
+
 function openDeleteModal(server){
   $("modalRoot").innerHTML = `
   <div class="modal" id="deleteModal">
@@ -2886,6 +3618,12 @@ collega($("bell"), "click", () => {
   go("events");
 });
 
+// Delegato: il pulsante compare e scompare a ogni ridisegno.
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest && ev.target.closest("[data-api-retry]");
+  if (btn) refreshAll();
+});
+
 let searchTimer = null;
 collega($("search"), "input", (ev) => {
   state.query = ev.target.value.trim();
@@ -2894,6 +3632,8 @@ collega($("search"), "input", (ev) => {
     if (state.page === "events") reloadEvents();
     else if (state.page === "overview" || state.page === "servers")
       render({keepDetail: true});
+    else if (state.page === "drives" && state.drivesData)
+      ridisegnaDischi();
   }, 220);
 });
 

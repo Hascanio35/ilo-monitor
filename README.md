@@ -19,9 +19,17 @@ stanno sette server.
 - **iLO 4, 5 e 6.** Le differenze fra generazioni sono gestite:
   chiave OEM `Hp` o `Hpe`, collezioni `Items` o `Members`, storage
   sotto `Storage` o sotto `SmartStorage`, paginazione dei log.
+- **iLO 2 e 3.** Senza Redfish, si leggono via RIBCL (riconosciuti
+  da soli all'aggiunta): stato, temperature, ventole, alimentatori,
+  consumi, dischi (modello e stato), processori, memoria, registri
+  eventi, accensione e LED. L'usura dei dischi e gli indirizzi IP
+  del sistema non sono disponibili su queste generazioni.
 - **Inventario e stato.** Processori, moduli di memoria, dischi
   fisici e volumi, controller, interfacce di rete, alimentatori,
   sensori termici, ventole, consumi.
+- **Dischi.** Una pagina raccoglie i dischi fisici di tutti i server,
+  ordinati per vita residua, con seriale, stato e guasti previsti:
+  si vede subito quale SSD sostituire per primo.
 - **Eventi.** Importa IEL, IML, SL e Alert Event Log, deduplicati,
   con filtro per server, gravità, sorgente e testo. Gli accessi
   generati dal monitoraggio stesso si possono escludere.

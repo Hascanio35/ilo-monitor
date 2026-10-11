@@ -162,13 +162,26 @@ def controlla_componenti(cur, server_id, regola, soglie):
         cur.execute(
             """
             SELECT d.* FROM physical_drives d
-            JOIN (SELECT MAX(collected_at) AS ultimo FROM physical_drives
-                   WHERE server_id=%s) u ON u.ultimo=d.collected_at
+            JOIN (
+                SELECT COALESCE(source, 'ilo') AS src, MAX(collected_at) AS ultimo
+                FROM physical_drives WHERE server_id=%s
+                GROUP BY COALESCE(source, 'ilo')
+            ) u ON u.src = COALESCE(d.source, 'ilo') AND u.ultimo = d.collected_at
             WHERE d.server_id=%s
+              AND (COALESCE(d.source, 'ilo') = 'ilo'
+                   OR d.collected_at >= UTC_TIMESTAMP() - INTERVAL 2 DAY)
+            ORDER BY COALESCE(d.source, 'ilo')
             """,
             (server_id, server_id),
         )
+        # Lo stesso disco puo' arrivare dall'iLO e da Windows: si valuta una volta.
+        visti_sn = set()
         for disco in cur.fetchall():
+            sn = str(disco.get("serial_number") or "").strip().upper()
+            if sn:
+                if sn in visti_sn:
+                    continue
+                visti_sn.add(sn)
             chiave = str(disco["drive_id"])
             etichetta = disco.get("bay") or chiave
             stato = str(disco.get("health") or "sconosciuto")
@@ -177,6 +190,9 @@ def controlla_componenti(cur, server_id, regola, soglie):
             vita = disco.get("media_life_left_percent")
             if vita is not None and float(vita) <= 10:
                 stato = f"vita residua {int(float(vita))}%"
+            errori = disco.get("uncorrected_errors")
+            if errori and stato_sano(stato):
+                stato = f"errori non corretti: {int(errori)}"
             confronta(
                 "drive", chiave, stato,
                 f"Disco {etichetta} ({disco.get('model') or '—'})",
@@ -195,6 +211,10 @@ def controlla_componenti(cur, server_id, regola, soglie):
             (server_id, server_id),
         )
         for psu in cur.fetchall():
+            # Alloggiamento vuoto: non e' un guasto, e una ventola o un
+            # alimentatore che non c'e' non deve generare email.
+            if str(psu.get("state") or "").lower() == "absent":
+                continue
             confronta(
                 "psu", str(psu["psu_id"]),
                 str(psu.get("health") or "sconosciuto"),
@@ -211,6 +231,8 @@ def controlla_componenti(cur, server_id, regola, soglie):
             (server_id, server_id),
         )
         for fan in cur.fetchall():
+            if str(fan.get("state") or "").lower() == "absent":
+                continue
             confronta(
                 "fan", str(fan["fan_id"]),
                 str(fan.get("health") or "sconosciuto"),

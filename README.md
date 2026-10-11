@@ -1,9 +1,14 @@
 # iLO Monitor
 
-Pannello di monitoraggio centralizzato per server HPE ProLiant, basato
-su Redfish. Raccoglie stato di salute, temperature, ventole, consumi,
-storage, rete e log eventi da più iLO, li conserva in un database e li
-mostra in un'unica interfaccia web, con avvisi via email.
+Pannello di monitoraggio centralizzato per server HPE ProLiant.
+Raccoglie stato di salute, temperature, ventole, consumi, storage, rete
+e log eventi da più iLO, li conserva in un database e li mostra in
+un'unica interfaccia web, con avvisi via email.
+
+Parla **Redfish** con gli iLO 4, 5 e 6 e **RIBCL** con i vecchi iLO 2
+e 3, che Redfish non lo conoscono. Uno **script per Windows**, generato
+dal pannello, aggiunge i dischi che l'iLO non vede (per esempio gli
+NVMe su scheda PCIe) con i dati SMART letti direttamente dal disco.
 
 Nato per non dover aprire sette interfacce iLO diverse per sapere come
 stanno sette server.
@@ -28,8 +33,12 @@ stanno sette server.
   fisici e volumi, controller, interfacce di rete, alimentatori,
   sensori termici, ventole, consumi.
 - **Dischi.** Una pagina raccoglie i dischi fisici di tutti i server,
-  ordinati per vita residua, con seriale, stato e guasti previsti:
-  si vede subito quale SSD sostituire per primo.
+  ordinati per vita residua, con seriale, ore di accensione, stato e
+  guasti previsti: si vede subito quale SSD sostituire per primo.
+- **Dischi e SMART da Windows.** Uno script PowerShell, scaricabile
+  dal pannello per ogni server, legge da Windows tutti i dischi fisici
+  con usura, vita residua, temperatura, ore di accensione ed errori, e
+  li invia ogni ora. Vedi [Script per Windows](#script-per-windows-dischi-e-smart).
 - **Eventi.** Importa IEL, IML, SL e Alert Event Log, deduplicati,
   con filtro per server, gravità, sorgente e testo. Gli accessi
   generati dal monitoraggio stesso si possono escludere.
@@ -37,7 +46,8 @@ stanno sette server.
   quali categorie seguire, più quattro controlli sullo stato dei
   componenti che avvisano al cambiamento anziché a ripetizione.
 - **Azioni.** Accensione, spegnimento ordinato o forzato, riavvio,
-  LED di identificazione, apertura della console remota HTML5.
+  LED di identificazione, apertura della console remota HTML5 (sugli
+  iLO 2 e 3 si apre la loro pagina, da cui parte la console Java).
 - **Telefono.** Sotto gli 820 pixel l'impaginazione cambia
   impostazione: barra di navigazione in basso, elenco a schede,
   menu che salgono dal basso. Si può aggiungere alla schermata home.
@@ -112,6 +122,80 @@ sudo ./install/upgrade.sh    # prima installazione o passaggio dalla v1
 sudo ./install/update.sh     # aggiornamenti successivi
 ```
 
+## iLO 2 e 3
+
+Si aggiungono come gli altri: il pannello prova Redfish e, se
+all'indirizzo risponde un iLO di vecchia generazione, passa da solo a
+RIBCL. Ogni giro fa un solo accesso all'iLO per stato e sensori;
+inventario e registri, a cadenza oraria, ne aggiungono altri tre.
+
+Gli iLO 2 accettano solo TLS 1.0 con cifrari datati: il collector li
+abilita **solo** per le connessioni verso di loro, il resto del sistema
+non cambia. Per capire cosa risponde un iLO 2 c'è una prova che salva
+le risposte grezze (senza password né chiave di licenza):
+
+```bash
+python3 -m app.ribcl --probe 192.168.1.50 --user Administrator
+```
+
+Su queste generazioni non sono disponibili l'usura dei dischi, i loro
+numeri di serie e gli indirizzi IP del sistema operativo; i consumi
+dipendono dagli alimentatori.
+
+## Script per Windows: dischi e SMART
+
+L'iLO non vede tutto: gli iLO 2 non conoscono gli NVMe su scheda
+PCIe, e senza Agentless Management Service nemmeno gli iLO 5 vedono i
+dischi sul SATA integrato. Windows invece li vede tutti.
+
+Dal dettaglio di un server, **Azioni → Script dischi per Windows…**
+scarica uno script PowerShell già configurato con l'indirizzo del
+pannello e una chiave valida solo per quel server. Sul server, da
+PowerShell aperto come amministratore:
+
+```powershell
+# prova: mostra i dischi letti, non invia nulla
+powershell -ExecutionPolicy Bypass -File .\ilo-monitor-dischi-NOME.ps1 -Mostra
+
+# installazione: attivita' pianificata ogni ora e all'avvio, come SYSTEM
+powershell -ExecutionPolicy Bypass -File .\ilo-monitor-dischi-NOME.ps1 -Installa
+
+# rimozione dell'attivita' pianificata
+powershell -ExecutionPolicy Bypass -File .\ilo-monitor-dischi-NOME.ps1 -Rimuovi
+```
+
+Cosa legge:
+
+- **NVMe**: il registro *SMART / Health Information* e i dati di
+  identificazione del controller (percentuale di usura, ore e cicli di
+  accensione, temperatura, dati letti e scritti, spegnimenti anomali,
+  errori del supporto, riserva disponibile, avviso critico, numero di
+  serie reale). Richiede Windows Server 2016 / Windows 10 o successivi.
+- **SATA**: gli attributi SMART dal driver di disco (vita residua da
+  231, 233, 202, 177 o 169 secondo il produttore, ore, temperatura,
+  settori riallocati e in attesa, errori non correggibili) e la
+  previsione di guasto.
+- In mancanza dei precedenti, i contatori di Windows
+  (`Get-StorageReliabilityCounter`).
+
+Sono esclusi i volumi dei controller RAID (quei dischi li legge già
+l'iLO), i volumi iSCSI e Fibre Channel, le chiavette USB e i dischi
+virtuali. Lo script invia i valori grezzi e li interpreta il pannello:
+se un produttore usa un attributo diverso si corregge il pannello,
+senza reinstallare nulla sui server.
+
+Nel pannello questi dischi hanno l'etichetta **Windows**; se lo stesso
+disco lo vede anche l'iLO compare una volta sola, completata con i dati
+SMART. Errori non corretti, settori in attesa, avviso critico NVMe e
+previsione di guasto contano fra i dischi da controllare e fanno
+partire gli avvisi email. Se si disinstalla lo script, dopo due giorni
+i suoi dischi spariscono dall'elenco.
+
+La chiave viene conservata solo come impronta SHA-256; scaricando di
+nuovo lo script se ne crea una nuova e quella vecchia smette di
+funzionare. Il server Windows deve raggiungere il pannello
+all'indirizzo usato dal browser per scaricarlo.
+
 ## Configurazione
 
 Tutto si imposta dall'interfaccia, in Impostazioni e Avvisi email:
@@ -142,12 +226,16 @@ credenziali privilegiate.
 
 Il servizio parla HTTP. Su una rete di gestione o dietro VPN è
 accettabile; esposto altrove, mettici davanti un reverse proxy con
-TLS.
+TLS. Lo stesso vale per lo script per Windows, che invia i dati
+all'indirizzo da cui è stato scaricato.
 
 ## Requisiti
 
 - Docker con Compose, oppure Python 3.11+, MariaDB 10.6+ e nginx
 - iLO raggiungibile via HTTPS dalla macchina che esegue il collector
+  (iLO 2: firmware 2.x, consigliato l'ultimo, 2.33)
+- Per lo script dei dischi: Windows Server 2012 o successivo
+  (2016 o successivo per lo SMART degli NVMe)
 - Licenza iLO Advanced per la console remota (il monitoraggio
   funziona anche senza)
 

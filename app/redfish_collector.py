@@ -230,6 +230,21 @@ def life_left(value, consumed=False):
     return v
 
 
+def watt(value):
+    """Watt misurati, None se l'iLO non misura.
+
+    Sui server con alimentatore non gestito (per esempio ML30 Gen9 con
+    alimentatore ATX) l'iLO non legge il consumo e risponde 0 invece di
+    omettere il campo. Un server acceso non consuma zero watt, quindi
+    zero significa "non misurato": salvarlo come numero falserebbe
+    totali, medie e grafici.
+    """
+    v = f(value)
+    if v is None or v <= 0:
+        return None
+    return v
+
+
 def member_key(item, index, prefix="item"):
     """Identificativo stabile di un componente Redfish.
 
@@ -553,6 +568,27 @@ def probe(ip, username, password):
         }
 
 
+def identifica(ip, username, password):
+    """Come probe(), ma riconosce anche gli iLO 2 e 3.
+
+    Restituisce (identita', protocollo): "redfish" oppure "ribcl".
+    Redfish si prova per primo; se fallisce si guarda se all'indirizzo
+    c'e' un iLO di vecchia generazione, e in quel caso si usa RIBCL.
+    Altrimenti resta l'errore di Redfish, che e' quello significativo.
+    """
+    try:
+        return probe(ip, username, password), "redfish"
+    except Exception as errore_redfish:
+        try:
+            from app import ribcl
+        except ImportError:
+            import ribcl
+        if not ribcl.e_ilo_ribcl(ip):
+            raise errore_redfish
+        rib = ribcl.Ribcl(ip, username, password)
+        return ribcl.identita(rib), "ribcl"
+
+
 # ================================================================
 # RACCOLTA DATI DI UN SINGOLO SERVER
 # ================================================================
@@ -561,6 +597,16 @@ def probe(ip, username, password):
 def collect_server(server, db, verbose=True, full=False):
     """Raccoglie tutti i dati di un server. `server` e' una riga dict
     della tabella servers. Restituisce un riepilogo dell'operazione."""
+
+    # Gli iLO 2 e 3 non hanno Redfish: li legge il modulo RIBCL, che
+    # scrive nelle stesse tabelle.
+    if str(server.get("ilo_protocol") or "").lower() == "ribcl":
+        try:
+            from app import ribcl_collector
+        except ImportError:
+            import ribcl_collector
+        return ribcl_collector.collect_server(
+            server, db, verbose=verbose, full=full)
 
     server_id = server["id"]
     name = server["name"]
@@ -674,6 +720,8 @@ def collect_server(server, db, verbose=True, full=False):
                 processor_summary=%s,
                 processor_count=%s,
                 memory_total_gib=%s,
+                ams_status=%s,
+                host_os=%s,
                 last_seen=%s
             WHERE id=%s
             """,
@@ -697,6 +745,13 @@ def collect_server(server, db, verbose=True, full=False):
                 cpu_summary.get("Model"),
                 i(cpu_summary.get("Count")),
                 f(mem_summary.get("TotalSystemMemoryGiB")),
+                # Agentless Management Service: gira nel sistema operativo
+                # e passa all'iLO indirizzi IP, stato delle schede di rete
+                # e dischi sul SATA integrato. Senza, l'iLO non li vede.
+                (hpe_system.get("AggregateHealthStatus") or {})
+                .get("AgentlessManagementService"),
+                ((hpe_system.get("HostOS") or {}).get("OsName") or "").strip()
+                or None,
                 collected,
                 server_id,
             ),
@@ -711,6 +766,13 @@ def collect_server(server, db, verbose=True, full=False):
             if isinstance(item, dict):
                 pc = item
                 break
+
+        # Redfish mette media, minimo e massimo in PowerMetrics, non
+        # direttamente in PowerControl. Alcuni firmware datati li
+        # riportano al primo livello: in quel caso ripieghiamo li'.
+        metriche = pc.get("PowerMetrics")
+        if not isinstance(metriche, dict) or not metriche:
+            metriche = pc
 
         def find_power_metric(obj):
             if isinstance(obj, dict):
@@ -740,10 +802,10 @@ def collect_server(server, db, verbose=True, full=False):
             (
                 server_id,
                 collected,
-                f(pc.get("PowerConsumedWatts")),
-                f(pc.get("AverageConsumedWatts")),
-                f(pc.get("MaxConsumedWatts")),
-                f(pc.get("MinConsumedWatts")),
+                watt(pc.get("PowerConsumedWatts")),
+                watt(metriche.get("AverageConsumedWatts")),
+                watt(metriche.get("MaxConsumedWatts")),
+                watt(metriche.get("MinConsumedWatts")),
                 f(pm.get("CpuWatts")),
                 f(pm.get("DimmWatts")),
                 f(pm.get("GpuWatts")),
@@ -767,7 +829,11 @@ def collect_server(server, db, verbose=True, full=False):
                     psu.get("Name"),
                     f(psu.get("PowerCapacityWatts")),
                     f(psu.get("PowerInputWatts")),
-                    f(psu.get("PowerOutputWatts")),
+                    f(
+                        psu.get("LastPowerOutputWatts")
+                        if psu.get("LastPowerOutputWatts") is not None
+                        else psu.get("PowerOutputWatts")
+                    ),
                     st.get("Health"),
                     st.get("State"),
                 ),
@@ -836,6 +902,13 @@ def collect_server(server, db, verbose=True, full=False):
                 speed = speed.get("SpeedPercent")
             if speed is None:
                 speed = fan.get("Reading")
+            # iLO 4 usa CurrentReading, con l'unita' in "Units" (di
+            # solito Percent). Se l'unita' sono giri al minuto il
+            # numero non e' una percentuale e non va mostrato come tale.
+            if speed is None and fan.get("CurrentReading") is not None:
+                unita = str(fan.get("Units") or "Percent").lower()
+                if unita in ("percent", "%"):
+                    speed = fan.get("CurrentReading")
             cur.execute(
                 """
                 INSERT INTO fans
@@ -948,15 +1021,25 @@ def collect_server(server, db, verbose=True, full=False):
 
             # ---------- STORAGE ----------
             log("  [6/9] storage")
-            storage_collection = rf.try_get("/Systems/1/Storage/", retries=2) or {}
+            # Gli iLO 4 non hanno l'elenco standard: lo storage sta solo in
+            # SmartStorage, letto subito dopo. Un 404 qui e' normale.
+            storage_collection = rf.try_get(
+                "/Systems/1/Storage/", retries=2, quiet=True) or {}
             storage_found = 0
+            # Cio' che il percorso standard ha gia' registrato, per non
+            # duplicarlo quando poi si legge anche SmartStorage.
+            visti = {"ctrl": set(), "disco": set(), "vol": set(), "vol_dim": [],
+                     "senza_vita": {}}
 
             for member in members(storage_collection):
                 storage_found += 1
                 uri = member.get("@odata.id")
                 if not uri:
                     continue
-                storage = rf.try_get(uri)
+                # Su alcuni iLO 5 questi rispondono a lungo
+                # ResourceNotReadyRetry: gli stessi dati arrivano da
+                # SmartStorage, quindi non serve insistere ne' segnalarlo.
+                storage = rf.try_get(uri, quiet=True)
                 if not storage:
                     continue
 
@@ -970,6 +1053,7 @@ def collect_server(server, db, verbose=True, full=False):
                             continue
                         st = controller.get("Status", {})
                         cache = controller.get("CacheSummary", {})
+                        visti["ctrl"].add(chiave_controller(controller))
                         cur.execute(
                             """
                             INSERT INTO storage_controllers
@@ -981,7 +1065,8 @@ def collect_server(server, db, verbose=True, full=False):
                             (
                                 server_id,
                                 collected,
-                                member_key(controller, c_index, "ctrl"),
+                                "rf-" + str(storage.get("Id") or "") + "-"
+                                + member_key(controller, c_index, "ctrl"),
                                 controller.get("Manufacturer"),
                                 controller.get("Model"),
                                 controller.get("FirmwareVersion"),
@@ -1003,19 +1088,34 @@ def collect_server(server, db, verbose=True, full=False):
                     location = drive.get("PhysicalLocation", {}).get(
                         "PartLocation", {}
                     )
+                    seriale = (drive.get("SerialNumber") or "").strip() or None
+                    vita = life_left(drive.get("PredictedMediaLifeLeftPercent"))
+                    drive_id = ("rf-" + str(storage.get("Id") or "") + "-"
+                                + member_key(drive, d_index, "disco"))
+                    if seriale:
+                        visti["disco"].add(seriale.upper())
+                        # Alcuni SSD riportano qui valori impossibili (338%):
+                        # SmartStorage puo' avere il dato giusto per lo
+                        # stesso disco, e lo si recupera da li'.
+                        if vita is None:
+                            visti["senza_vita"][seriale.upper()] = drive_id
                     cur.execute(
                         """
                         INSERT INTO physical_drives
                         (server_id, collected_at, drive_id, bay, manufacturer,
                          model, revision, protocol, media_type, capacity_bytes,
                          rotation_rpm, negotiated_speed_gbs, health, state,
-                         failure_predicted, media_life_left_percent)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                         failure_predicted, media_life_left_percent,
+                         serial_number)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                         """,
                         (
                             server_id,
                             collected,
-                            member_key(drive, d_index, "disco"),
+                            # Prefisso per sorgente: le due fonti numerano i
+                            # dischi ciascuna da capo, e "0" di una non e'
+                            # "0" dell'altra.
+                            drive_id,
                             location.get("ServiceLabel"),
                             drive.get("Manufacturer"),
                             drive.get("Model"),
@@ -1028,7 +1128,8 @@ def collect_server(server, db, verbose=True, full=False):
                             st.get("Health"),
                             st.get("State"),
                             drive.get("FailurePredicted"),
-                            life_left(drive.get("PredictedMediaLifeLeftPercent")),
+                            vita,
+                            seriale,
                         ),
                     )
 
@@ -1041,6 +1142,13 @@ def collect_server(server, db, verbose=True, full=False):
                         if not volume:
                             continue
                         st = volume.get("Status", {})
+                        for ident in volume.get("Identifiers") or []:
+                            if isinstance(ident, dict) and ident.get("DurableName"):
+                                visti["vol"].add(str(ident["DurableName"]).upper())
+                        visti["vol_dim"].append(
+                            (raid_norm(volume.get("RAIDType")),
+                             f(volume.get("CapacityBytes")))
+                        )
                         cur.execute(
                             """
                             INSERT INTO storage_volumes
@@ -1051,7 +1159,8 @@ def collect_server(server, db, verbose=True, full=False):
                             (
                                 server_id,
                                 collected,
-                                member_key(volume, v_index, "volume"),
+                                "rf-" + str(storage.get("Id") or "") + "-"
+                                + member_key(volume, v_index, "volume"),
                                 volume.get("Name"),
                                 volume.get("RAIDType"),
                                 volume.get("CapacityBytes"),
@@ -1060,11 +1169,13 @@ def collect_server(server, db, verbose=True, full=False):
                             ),
                         )
 
-            # Ripiego sull'estensione HPE SmartStorage: serve ai Gen9 con
-            # iLO 4, che non espongono /Systems/1/Storage/, e ai Gen10 il
-            # cui controller non era pronto nemmeno dopo le riprove.
-            if not storage_found:
-                collect_smart_storage(rf, cur, server_id, collected, log)
+            # SmartStorage si legge sempre, non solo come ripiego. I Gen9
+            # con iLO 4 non espongono /Systems/1/Storage/ affatto; sui
+            # Gen10 il RAID software S100i compare solo li', mentre
+            # l'elenco standard mostra il controller SATA e basta. Cio'
+            # che le due fonti hanno in comune (uno Smart Array vero
+            # come il P408i) viene riconosciuto e non duplicato.
+            collect_smart_storage(rf, cur, server_id, collected, log, visti)
 
             # ---------- RETE ----------
             log("  [7/9] interfacce di rete")
@@ -1263,74 +1374,95 @@ def collect_server(server, db, verbose=True, full=False):
 # ================================================================
 
 
-def collect_smart_storage(rf, cur, server_id, collected, log):
+def chiave_controller(controller):
+    """Seriale del controller, o il modello se il seriale manca."""
+    seriale = str(controller.get("SerialNumber") or "").strip().upper()
+    if seriale:
+        return "sn:" + seriale
+    return "mod:" + str(controller.get("Model") or "").strip().upper()
+
+
+def raid_norm(valore):
+    """'RAID1', 'Raid1', '1' -> '1': le due fonti scrivono diversamente."""
+    testo = str(valore or "").upper().replace("RAID", "").strip()
+    return testo or None
+
+
+def volume_gia_visto(visti, uid, raid, capacita):
+    if uid and uid.upper() in visti["vol"]:
+        return True
+    # Senza identificativo confrontiamo livello RAID e capacita':
+    # le due fonti arrotondano in modo diverso, quindi un 2% di
+    # tolleranza.
+    if capacita:
+        for r, c in visti["vol_dim"]:
+            if c and r == raid and abs(c - capacita) / max(c, capacita) < 0.02:
+                return True
+    return False
+
+
+def collect_smart_storage(rf, cur, server_id, collected, log, visti=None):
     """Storage dei server Gen9 (iLO 4) via estensione SmartStorage.
 
     Le capacita' sono espresse in MiB anziche' in byte e i campi
     hanno nomi propri, quindi vanno convertiti prima di riusare le
     stesse tabelle del percorso Redfish standard.
     """
-    root = rf.try_get("/Systems/1/SmartStorage/ArrayControllers/")
-    if not root:
-        return
+    if visti is None:
+        visti = {"ctrl": set(), "disco": set(), "vol": set(), "vol_dim": []}
+
+    # Su un server senza SmartStorage l'endpoint non esiste: va bene,
+    # e non serve riempire il log con un 404 a ogni raccolta.
+    root = rf.try_get("/Systems/1/SmartStorage/ArrayControllers/", quiet=True) or {}
 
     def mib_to_bytes(value):
         v = f(value)
         return int(v * 1024 * 1024) if v else None
 
-    for c_index, ref in enumerate(members(root), start=1):
-        controller = rf.try_get(ref.get("@odata.id", ""))
-        if not controller:
-            continue
+    aggiunti = {"ctrl": 0, "disco": 0, "vol": 0}
 
-        st = controller.get("Status", {})
-        controller_id = member_key(controller, c_index, "ctrl")
-
-        cur.execute(
-            """
-            INSERT INTO storage_controllers
-            (server_id, collected_at, controller_id, manufacturer, model,
-             firmware, cache_mib, health, state)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            (
-                server_id,
-                collected,
-                controller_id,
-                controller.get("Manufacturer"),
-                controller.get("Model"),
-                (controller.get("FirmwareVersion", {}) or {})
-                .get("Current", {})
-                .get("VersionString")
-                if isinstance(controller.get("FirmwareVersion"), dict)
-                else controller.get("FirmwareVersion"),
-                f(controller.get("CacheMemorySizeMiB")),
-                st.get("Health"),
-                st.get("State"),
-            ),
-        )
-
-        base = str(ref.get("@odata.id", "")).rstrip("/")
-
-        drives = rf.try_get(base + "/DiskDrives/") or {}
+    def leggi_dischi(percorso, prefisso):
+        drives = rf.try_get(percorso, quiet=True) or {}
+        trovati = 0
         for d_index, d_ref in enumerate(members(drives), start=1):
             drive = rf.try_get(d_ref.get("@odata.id", ""))
             if not drive:
                 continue
             dst = drive.get("Status", {})
+            seriale = (drive.get("SerialNumber") or "").strip() or None
+            # Stesso disco gia' letto dal percorso standard: si salta.
+            # Senza seriale non si puo' sapere, e si preferisce un
+            # possibile doppione a un disco reale che sparisce.
+            if seriale and seriale.upper() in visti["disco"]:
+                da_completare = visti.get("senza_vita", {}).pop(seriale.upper(), None)
+                vita_ss = life_left(
+                    drive.get("SSDEnduranceUtilizationPercentage"), consumed=True)
+                if da_completare and vita_ss is not None:
+                    cur.execute(
+                        "UPDATE physical_drives SET media_life_left_percent=%s "
+                        "WHERE server_id=%s AND collected_at=%s AND drive_id=%s",
+                        (vita_ss, server_id, collected, da_completare),
+                    )
+                    aggiunti["vita"] = aggiunti.get("vita", 0) + 1
+                continue
+            if seriale:
+                visti["disco"].add(seriale.upper())
+            aggiunti["disco"] += 1
+            trovati += 1
             cur.execute(
                 """
                 INSERT INTO physical_drives
                 (server_id, collected_at, drive_id, bay, manufacturer,
                  model, revision, protocol, media_type, capacity_bytes,
                  rotation_rpm, negotiated_speed_gbs, health, state,
-                 failure_predicted, media_life_left_percent)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                 failure_predicted, media_life_left_percent, serial_number,
+                 endurance_used_percent, power_on_hours)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """,
                 (
                     server_id,
                     collected,
-                    member_key(drive, d_index, "disco"),
+                    prefisso + member_key(drive, d_index, "disco"),
                     drive.get("Location"),
                     None,
                     drive.get("Model"),
@@ -1352,8 +1484,60 @@ def collect_smart_storage(rf, cur, server_id, collected, log):
                         drive.get("SSDEnduranceUtilizationPercentage"),
                         consumed=True,
                     ),
+                    seriale,
+                    # Il valore grezzo si conserva anche quando supera 100:
+                    # vuol dire durata nominale superata (o contatore
+                    # inattendibile) e va mostrato, non nascosto.
+                    f(drive.get("SSDEnduranceUtilizationPercentage")),
+                    i(drive.get("PowerOnHours")),
                 ),
             )
+        return trovati
+
+    # Senza nulla dall'elenco standard (iLO 4) SmartStorage e' l'unica
+    # fonte, e "in piu'" sarebbe fuorviante.
+    unica_fonte = not any(visti[k] for k in ("ctrl", "disco", "vol", "vol_dim"))
+
+    for c_index, ref in enumerate(members(root), start=1):
+        controller = rf.try_get(ref.get("@odata.id", ""))
+        if not controller:
+            continue
+
+        st = controller.get("Status", {})
+        controller_id = "ss-" + member_key(controller, c_index, "ctrl")
+        chiave = chiave_controller(controller)
+        controller_nuovo = chiave not in visti["ctrl"]
+        visti["ctrl"].add(chiave)
+
+        if controller_nuovo:
+            aggiunti["ctrl"] += 1
+            cur.execute(
+                """
+                INSERT INTO storage_controllers
+                (server_id, collected_at, controller_id, manufacturer, model,
+                 firmware, cache_mib, health, state)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """,
+                (
+                    server_id,
+                    collected,
+                    controller_id,
+                    controller.get("Manufacturer"),
+                    controller.get("Model"),
+                    (controller.get("FirmwareVersion", {}) or {})
+                    .get("Current", {})
+                    .get("VersionString")
+                    if isinstance(controller.get("FirmwareVersion"), dict)
+                    else controller.get("FirmwareVersion"),
+                    f(controller.get("CacheMemorySizeMiB")),
+                    st.get("Health"),
+                    st.get("State"),
+                ),
+            )
+
+        base = str(ref.get("@odata.id", "")).rstrip("/")
+
+        leggi_dischi(base + "/DiskDrives/", "ss-" + str(c_index) + "-")
 
         volumes = rf.try_get(base + "/LogicalDrives/") or {}
         for v_index, v_ref in enumerate(members(volumes), start=1):
@@ -1362,6 +1546,11 @@ def collect_smart_storage(rf, cur, server_id, collected, log):
                 continue
             vst = volume.get("Status", {})
             raid = volume.get("Raid")
+            uid = str(volume.get("VolumeUniqueIdentifier") or "").strip()
+            capacita = mib_to_bytes(volume.get("CapacityMiB"))
+            if volume_gia_visto(visti, uid, raid_norm(raid), capacita):
+                continue
+            aggiunti["vol"] += 1
             cur.execute(
                 """
                 INSERT INTO storage_volumes
@@ -1372,7 +1561,7 @@ def collect_smart_storage(rf, cur, server_id, collected, log):
                 (
                     server_id,
                     collected,
-                    member_key(volume, v_index, "volume"),
+                    "ss-" + str(c_index) + "-" + member_key(volume, v_index, "volume"),
                     volume.get("LogicalDriveName") or volume.get("Name"),
                     f"RAID{raid}" if raid is not None else None,
                     mib_to_bytes(volume.get("CapacityMiB")),
@@ -1381,7 +1570,53 @@ def collect_smart_storage(rf, cur, server_id, collected, log):
                 ),
             )
 
-    log("    storage letto tramite SmartStorage")
+    # Controller SATA integrati in modalita' AHCI: i dischi compaiono
+    # qui solo se il sistema operativo ha l'Agentless Management
+    # Service. Il controller si registra solo se ha dischi, altrimenti
+    # sarebbe una riga vuota in piu' per ogni server.
+    hba = rf.try_get("/Systems/1/SmartStorage/HostBusAdapters/", quiet=True) or {}
+    for h_index, ref in enumerate(members(hba), start=1):
+        adattatore = rf.try_get(ref.get("@odata.id", ""), quiet=True)
+        if not adattatore:
+            continue
+        base = str(ref.get("@odata.id", "")).rstrip("/")
+        if not leggi_dischi(base + "/DiskDrives/", "hba-" + str(h_index) + "-"):
+            continue
+        chiave = chiave_controller(adattatore)
+        if chiave in visti["ctrl"]:
+            continue
+        visti["ctrl"].add(chiave)
+        aggiunti["ctrl"] += 1
+        hst = adattatore.get("Status") or {}
+        cur.execute(
+            """
+            INSERT INTO storage_controllers
+            (server_id, collected_at, controller_id, manufacturer, model,
+             firmware, cache_mib, health, state)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (
+                server_id,
+                collected,
+                "hba-" + member_key(adattatore, h_index, "ctrl"),
+                None,
+                adattatore.get("Model"),
+                None,
+                None,
+                hst.get("Health"),
+                hst.get("State"),
+            ),
+        )
+
+    vite = aggiunti.pop("vita", 0)
+    if any(aggiunti.values()):
+        log(
+            f"    SmartStorage: {aggiunti['disco']} dischi, "
+            f"{aggiunti['vol']} volumi, {aggiunti['ctrl']} controller"
+            + ("" if unica_fonte else " in piu' rispetto all'elenco standard")
+        )
+    if vite:
+        log(f"    SmartStorage: vita residua recuperata per {vite} SSD")
 
 
 def read_setting(cur, key, default):
@@ -1729,6 +1964,48 @@ def prune_run_logs():
         pass
 
 
+def esplora_sottoalbero(rf, radice, fh, limite=150):
+    """Scrive su fh ogni risorsa raggiungibile sotto radice."""
+    prefisso = "/redfish/v1" + radice.rstrip("/")
+    da_leggere = [radice]
+    visti = set()
+    letti = 0
+
+    def collegamenti(nodo):
+        if isinstance(nodo, dict):
+            for chiave, valore in nodo.items():
+                if chiave in ("@odata.id", "href") and isinstance(valore, str):
+                    yield valore
+                else:
+                    yield from collegamenti(valore)
+        elif isinstance(nodo, list):
+            for valore in nodo:
+                yield from collegamenti(valore)
+
+    while da_leggere and letti < limite:
+        percorso = da_leggere.pop(0)
+        normale = percorso.replace("/redfish/v1", "").rstrip("/") + "/"
+        if normale in visti:
+            continue
+        visti.add(normale)
+        fh.write("=" * 70 + "\n" + normale + "\n" + "=" * 70 + "\n")
+        try:
+            payload = rf.get(normale)
+            letti += 1
+            fh.write(json.dumps(payload, indent=1, ensure_ascii=False))
+        except Exception as exc:
+            fh.write(f"NON DISPONIBILE: {exc}")
+            payload = None
+        fh.write("\n\n")
+        for link in collegamenti(payload):
+            # Solo dentro il sottoalbero: i link "Links" portano anche
+            # a Chassis e Systems, che non servono qui.
+            completo = link if link.startswith("/redfish/v1") else "/redfish/v1" + link
+            if completo.rstrip("/").startswith(prefisso):
+                da_leggere.append(completo)
+    return letti
+
+
 def dump_server(server_id, path):
     """Salva su file le risposte grezze dell'iLO.
 
@@ -1751,6 +2028,14 @@ def dump_server(server_id, path):
         print("Password iLO non configurata per questo server")
         return 1
 
+    if str(server.get("ilo_protocol") or "").lower() == "ribcl":
+        try:
+            from app import ribcl
+        except ImportError:
+            import ribcl
+        return ribcl.prova(server["ilo_ip"], server.get("ilo_user")
+                           or "Administrator", password, path)
+
     endpoints = [
         "/",
         "/Systems/1/",
@@ -1760,8 +2045,6 @@ def dump_server(server_id, path):
         "/Chassis/1/Thermal/",
         "/Systems/1/Processors/",
         "/Systems/1/Memory/",
-        "/Systems/1/Storage/",
-        "/Systems/1/SmartStorage/ArrayControllers/",
         "/Systems/1/EthernetInterfaces/",
         "/Managers/1/LogServices/",
         "/Systems/1/LogServices/",
@@ -1786,6 +2069,16 @@ def dump_server(server_id, path):
                     fh.write(f"NON DISPONIBILE: {exc}")
                 fh.write("\n\n")
                 print(f"  letto {endpoint}")
+
+            # Lo storage si esplora per intero: controller, dischi e
+            # volumi stanno due o tre livelli sotto l'elenco, ed e' li'
+            # che le generazioni di iLO differiscono di piu'.
+            for radice in ("/Systems/1/Storage/", "/Systems/1/SmartStorage/"):
+                letti = esplora_sottoalbero(rf, radice, fh)
+                if letti:
+                    print(f"  letto {radice} e {letti - 1} risorse sottostanti")
+                else:
+                    print(f"  {radice} non disponibile su questo iLO")
     finally:
         rf.close()
 

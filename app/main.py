@@ -5,7 +5,11 @@ dall'interfaccia: elenco e dettaglio server, aggiunta/modifica/rimozione,
 raccolta su richiesta, eventi, mappe termiche, report e impostazioni.
 """
 
+import hashlib
+import json
 import os
+import re
+import secrets
 import threading
 import traceback
 from datetime import datetime
@@ -50,6 +54,9 @@ PUBLIC_PATHS = {
     "/manifest.webmanifest",
     "/apple-touch-icon.png",
     "/apple-touch-icon-precomposed.png",
+    # Lo script per Windows si autentica con la propria chiave, non
+    # con la sessione dell'interfaccia: il controllo e' nell'endpoint.
+    "/api/agent/drives",
 }
 
 # Limite ai tentativi falliti per indirizzo, per rallentare chi prova
@@ -79,6 +86,11 @@ def db():
         charset="utf8mb4",
         cursorclass=pymysql.cursors.DictCursor,
         autocommit=True,
+        # Una query dell'interfaccia che supera i 25 secondi viene
+        # interrotta da MariaDB: il browser ha gia' rinunciato a 30, e
+        # lasciarla girare fa solo accumulare query a ogni aggiornamento
+        # automatico, rallentando tutto il resto.
+        init_command="SET SESSION max_statement_time=25",
     )
 
 
@@ -118,6 +130,52 @@ def latest_by(cur, table, group_column, server_id):
     return many(cur, sql, (server_id, server_id))
 
 
+# Dischi: due sorgenti per server, l'iLO e lo script per Windows. Ogni
+# sorgente scrive con i propri tempi, quindi "l'ultima raccolta" va
+# presa per sorgente, altrimenti l'una nasconderebbe l'altra. I dati
+# dello script valgono finche' sono recenti: se lo si disinstalla,
+# dopo due giorni i suoi dischi spariscono dall'elenco.
+ULTIMI_DISCHI_SQL = """
+    SELECT d.* FROM physical_drives d
+    JOIN (
+        SELECT COALESCE(source, 'ilo') AS src, MAX(collected_at) AS ultimo
+        FROM physical_drives WHERE server_id=%s
+        GROUP BY COALESCE(source, 'ilo')
+    ) u ON u.src = COALESCE(d.source, 'ilo') AND u.ultimo = d.collected_at
+    WHERE d.server_id=%s
+      AND (COALESCE(d.source, 'ilo') = 'ilo'
+           OR d.collected_at >= UTC_TIMESTAMP() - INTERVAL 2 DAY)
+    ORDER BY COALESCE(d.source, 'ilo'), d.id
+"""
+
+
+def senza_doppioni(dischi):
+    """Un disco visto sia dall'iLO sia da Windows compare una volta sola:
+    resta la voce dell'iLO, completata con i contatori SMART di Windows."""
+    da_ilo = {}
+    for d in dischi:
+        sn = str(d.get("serial_number") or "").strip().upper()
+        if sn and (d.get("source") or "ilo") == "ilo":
+            da_ilo[sn] = d
+    esito = []
+    for d in dischi:
+        sn = str(d.get("serial_number") or "").strip().upper()
+        if (d.get("source") or "ilo") == "os" and sn in da_ilo:
+            base = da_ilo[sn]
+            for campo in ("temperature_c", "uncorrected_errors", "smart_json",
+                          "power_on_hours", "media_life_left_percent"):
+                if base.get(campo) is None and d.get(campo) is not None:
+                    base[campo] = d[campo]
+            continue
+        esito.append(d)
+    return esito
+
+
+def ultimi_dischi(cur, server_id):
+    return senza_doppioni(
+        many(cur, ULTIMI_DISCHI_SQL, (server_id, server_id)))
+
+
 def public_server(row):
     """Rimuove password e token di sessione prima di inviare al browser."""
     if not row:
@@ -126,6 +184,8 @@ def public_server(row):
     clean.pop("ilo_password_enc", None)
     clean.pop("ilo_session_token", None)
     clean.pop("ilo_session_location", None)
+    clean["has_agent"] = bool(row.get("agent_token_hash"))
+    clean.pop("agent_token_hash", None)
     clean["has_password"] = bool(row.get("ilo_password_enc"))
     return clean
 
@@ -260,9 +320,16 @@ async def require_login(request: Request, call_next):
     return await call_next(request)
 
 
+# Senza Cache-Control il browser puo' riusare la pagina vecchia per
+# ore (cache "euristica" basata sulla data del file) e dopo un
+# aggiornamento si continua a vedere l'interfaccia precedente.
+# no-cache non vieta la cache: obbliga a chiedere se e' cambiata.
+NO_CACHE = {"Cache-Control": "no-cache"}
+
+
 @app.get("/login")
 def login_page():
-    return FileResponse(f"{BASE_DIR}/web/login.html")
+    return FileResponse(f"{BASE_DIR}/web/login.html", headers=NO_CACHE)
 
 
 @app.post("/api/login")
@@ -499,7 +566,7 @@ class SettingsIn(BaseModel):
 
 @app.get("/")
 def index():
-    return FileResponse(f"{BASE_DIR}/web/index.html")
+    return FileResponse(f"{BASE_DIR}/web/index.html", headers=NO_CACHE)
 
 
 # ---------- icone e manifesto ----------
@@ -582,40 +649,14 @@ def summary():
 
             servers = many(
                 cur,
-                """
-                SELECT
-                    s.id,
-                    s.overall_health,
-                    s.last_collect_status,
-                    -- Temperatura d'aspirazione: e' il dato che descrive
-                    -- l'ambiente. Se iLO non riporta AmbTemp ripieghiamo
-                    -- sul sensore di inlet del telaio.
-                    COALESCE(
-                        (SELECT sm.ambient_temperature
-                           FROM system_metrics sm
-                          WHERE sm.server_id=s.id
-                            AND sm.ambient_temperature IS NOT NULL
-                          ORDER BY sm.id DESC LIMIT 1),
-                        (SELECT ts.temperature_c
-                           FROM thermal_sensors ts
-                          WHERE ts.server_id=s.id
-                            AND ts.sensor_name LIKE '%%Inlet%%'
-                            AND ts.temperature_c > 0
-                          ORDER BY ts.id DESC LIMIT 1)
-                    ) AS ambient_temp,
-                    (SELECT MAX(ts.temperature_c)
-                       FROM thermal_sensors ts
-                      WHERE ts.server_id=s.id
-                        AND ts.collected_at >= NOW() - INTERVAL 2 HOUR
-                    ) AS max_temp,
-                    (SELECT pm.consumed_watts
-                       FROM power_metrics pm
-                      WHERE pm.server_id=s.id
-                      ORDER BY pm.id DESC LIMIT 1) AS watts
-                FROM servers s
-                WHERE s.enabled=1
-                """,
+                "SELECT id, overall_health, last_collect_status "
+                "FROM servers WHERE enabled=1",
             )
+            for row in servers:
+                ultimi = ultimi_valori(cur, row["id"])
+                row["ambient_temp"] = ultimi["ambient_temperature"]
+                row["max_temp"] = ultimi["max_temperature"]
+                row["watts"] = ultimi["consumed_watts"]
 
             temps = [
                 float(x["ambient_temp"])
@@ -627,9 +668,10 @@ def summary():
                 for x in servers
                 if x["max_temp"] is not None
             ]
-            total_power = sum(
+            misurati = [
                 float(x["watts"]) for x in servers if x["watts"] is not None
-            )
+            ]
+            total_power = sum(misurati)
 
             def bucket(row):
                 health = str(row["overall_health"] or "").upper()
@@ -679,9 +721,12 @@ def summary():
                     "max_temperature": max(temps) if temps else None,
                     "peak_temperature": max(peaks) if peaks else None,
                     "total_power": round(total_power, 1),
-                    "avg_power": round(total_power / len(servers), 1)
-                    if servers
+                    # La media si fa sui server che misurano il consumo:
+                    # contare anche quelli senza misura la abbasserebbe.
+                    "avg_power": round(total_power / len(misurati), 1)
+                    if misurati
                     else None,
+                    "power_measured": len(misurati),
                     "events_24h": int(events["total"] or 0),
                     "events_critical": int(events["critical"] or 0),
                     "events_warning": int(events["warning"] or 0),
@@ -698,45 +743,88 @@ def summary():
 # ELENCO E DETTAGLIO SERVER
 # ================================================================
 
-SERVER_LIST_SQL = """
-    SELECT
-        s.*,
-        (SELECT sm.collected_at FROM system_metrics sm
-          WHERE sm.server_id=s.id ORDER BY sm.id DESC LIMIT 1
-        ) AS metrics_at,
-        (SELECT sm.cpu_utilization FROM system_metrics sm
-          WHERE sm.server_id=s.id ORDER BY sm.id DESC LIMIT 1
-        ) AS cpu_utilization,
-        (SELECT sm.cpu_power_watts FROM system_metrics sm
-          WHERE sm.server_id=s.id ORDER BY sm.id DESC LIMIT 1
-        ) AS cpu_power_watts,
-        (SELECT sm.ambient_temperature FROM system_metrics sm
-          WHERE sm.server_id=s.id ORDER BY sm.id DESC LIMIT 1
-        ) AS ambient_temperature,
-        (SELECT sm.io_bus_utilization FROM system_metrics sm
-          WHERE sm.server_id=s.id ORDER BY sm.id DESC LIMIT 1
-        ) AS io_bus_utilization,
-        (SELECT sm.memory_bus_utilization FROM system_metrics sm
-          WHERE sm.server_id=s.id ORDER BY sm.id DESC LIMIT 1
-        ) AS memory_bus_utilization,
-        (SELECT pm.consumed_watts FROM power_metrics pm
-          WHERE pm.server_id=s.id ORDER BY pm.id DESC LIMIT 1
-        ) AS consumed_watts,
-        (SELECT pm.average_watts FROM power_metrics pm
-          WHERE pm.server_id=s.id ORDER BY pm.id DESC LIMIT 1
-        ) AS average_watts,
-        (SELECT MAX(ts.temperature_c) FROM thermal_sensors ts
-          WHERE ts.server_id=s.id
-            AND ts.collected_at >= NOW() - INTERVAL 2 HOUR
-        ) AS max_temperature,
-        (SELECT COUNT(*) FROM ilo_events e
-          WHERE e.server_id=s.id
-            AND e.event_created >= NOW() - INTERVAL 24 HOUR
-        ) AS events_24h
-    FROM servers s
-    {where}
-    ORDER BY s.name
-"""
+# ----------------------------------------------------------------
+# Ultimi valori di un server
+# ----------------------------------------------------------------
+# Prima erano sottoquery correlate dentro un'unica SELECT. Con qualche
+# settimana di storico MariaDB a volte sceglieva di scorrere le tabelle
+# intere invece di saltare all'ultima riga, e la panoramica superava
+# i 30 secondi. Qui ogni lettura e' una query semplice sul solo server,
+# ordinata come l'indice (server_id, collected_at): una riga letta,
+# qualunque sia la quantita' di storico.
+
+
+def ultima_riga(cur, tabella, server_id, colonne):
+    return one(
+        cur,
+        f"SELECT {colonne} FROM {tabella} WHERE server_id=%s "
+        f"ORDER BY collected_at DESC LIMIT 1",
+        (server_id,),
+    ) or {}
+
+
+def ultimi_valori(cur, server_id):
+    sm = ultima_riga(
+        cur, "system_metrics", server_id,
+        "collected_at, cpu_utilization, cpu_power_watts, "
+        "ambient_temperature, io_bus_utilization, memory_bus_utilization",
+    )
+    pm = ultima_riga(
+        cur, "power_metrics", server_id, "consumed_watts, average_watts"
+    )
+
+    # Sensori dell'ultima raccolta: picco e, se l'iLO non riporta
+    # AmbTemp, la temperatura del sensore d'aspirazione (Inlet).
+    ultima_termica = one(
+        cur,
+        "SELECT MAX(collected_at) AS t FROM thermal_sensors "
+        "WHERE server_id=%s",
+        (server_id,),
+    )
+    sensori = []
+    if ultima_termica and ultima_termica["t"]:
+        sensori = many(
+            cur,
+            "SELECT sensor_name, temperature_c FROM thermal_sensors "
+            "WHERE server_id=%s AND collected_at=%s",
+            (server_id, ultima_termica["t"]),
+        )
+    temperature = [
+        float(x["temperature_c"]) for x in sensori
+        if x["temperature_c"] is not None and float(x["temperature_c"]) > 0
+    ]
+    inlet = next(
+        (
+            float(x["temperature_c"]) for x in sensori
+            if "inlet" in str(x["sensor_name"] or "").lower()
+            and x["temperature_c"] is not None
+            and float(x["temperature_c"]) > 0
+        ),
+        None,
+    )
+    ambiente = sm.get("ambient_temperature")
+    if ambiente is None:
+        ambiente = inlet
+
+    eventi = one(
+        cur,
+        "SELECT COUNT(*) AS n FROM ilo_events "
+        "WHERE server_id=%s AND event_created >= NOW() - INTERVAL 24 HOUR",
+        (server_id,),
+    )
+
+    return {
+        "metrics_at": sm.get("collected_at"),
+        "cpu_utilization": sm.get("cpu_utilization"),
+        "cpu_power_watts": sm.get("cpu_power_watts"),
+        "ambient_temperature": ambiente,
+        "io_bus_utilization": sm.get("io_bus_utilization"),
+        "memory_bus_utilization": sm.get("memory_bus_utilization"),
+        "consumed_watts": pm.get("consumed_watts"),
+        "average_watts": pm.get("average_watts"),
+        "max_temperature": max(temperature) if temperature else None,
+        "events_24h": int(eventi["n"]) if eventi else 0,
+    }
 
 
 @app.get("/api/servers")
@@ -745,7 +833,9 @@ def servers(include_disabled: bool = Query(True)):
     con = db()
     try:
         with con.cursor() as cur:
-            rows = many(cur, SERVER_LIST_SQL.format(where=where))
+            rows = many(cur, f"SELECT s.* FROM servers s {where} ORDER BY s.name")
+            for row in rows:
+                row.update(ultimi_valori(cur, row["id"]))
             return {"ok": True, "data": [public_server(r) for r in rows]}
     finally:
         con.close()
@@ -756,13 +846,10 @@ def server_detail(server_id: int):
     con = db()
     try:
         with con.cursor() as cur:
-            s = one(
-                cur,
-                SERVER_LIST_SQL.format(where="WHERE s.id=%s"),
-                (server_id,),
-            )
+            s = one(cur, "SELECT * FROM servers WHERE id=%s", (server_id,))
             if not s:
                 raise HTTPException(404, "Server non trovato")
+            s.update(ultimi_valori(cur, server_id))
 
             return {
                 "ok": True,
@@ -771,13 +858,29 @@ def server_detail(server_id: int):
                     "metric": one(
                         cur,
                         "SELECT * FROM system_metrics WHERE server_id=%s "
-                        "ORDER BY id DESC LIMIT 1",
+                        "ORDER BY collected_at DESC, id DESC LIMIT 1",
                         (server_id,),
                     ),
                     "power": one(
                         cur,
                         "SELECT * FROM power_metrics WHERE server_id=%s "
-                        "ORDER BY id DESC LIMIT 1",
+                        "ORDER BY collected_at DESC, id DESC LIMIT 1",
+                        (server_id,),
+                    ),
+                    # La media dell'iLO copre solo gli ultimi minuti
+                    # (IntervalInMin, di solito 20): quella di 24 ore la
+                    # ricaviamo dalle rilevazioni archiviate.
+                    "power_24h": one(
+                        cur,
+                        """
+                        SELECT AVG(consumed_watts) AS avg_watts,
+                               MAX(consumed_watts) AS max_watts,
+                               MIN(consumed_watts) AS min_watts,
+                               COUNT(consumed_watts) AS samples
+                        FROM power_metrics
+                        WHERE server_id=%s
+                          AND collected_at >= NOW() - INTERVAL 24 HOUR
+                        """,
                         (server_id,),
                     ),
                     "fans": latest_by(cur, "fans", "fan_id", server_id),
@@ -796,9 +899,7 @@ def server_detail(server_id: int):
                     "storage_controllers": latest_by(
                         cur, "storage_controllers", "controller_id", server_id
                     ),
-                    "drives": latest_by(
-                        cur, "physical_drives", "drive_id", server_id
-                    ),
+                    "drives": ultimi_dischi(cur, server_id),
                     "volumes": latest_by(
                         cur, "storage_volumes", "volume_id", server_id
                     ),
@@ -818,7 +919,7 @@ def server_detail(server_id: int):
                         cur,
                         "SELECT id, started_at, finished_at, status, "
                         "error_message FROM collection_runs "
-                        "WHERE server_id=%s ORDER BY id DESC LIMIT 10",
+                        "WHERE server_id=%s ORDER BY started_at DESC, id DESC LIMIT 10",
                         (server_id,),
                     ),
                 },
@@ -889,7 +990,7 @@ def create_server(payload: ServerIn, background: BackgroundTasks):
     # Verifichiamo le credenziali prima di salvare: meglio un errore
     # subito che un server fantasma in elenco.
     try:
-        identity = collector.probe(
+        identity, protocollo = collector.identifica(
             payload.ilo_ip, payload.ilo_user, payload.ilo_password
         )
     except Exception as exc:
@@ -931,9 +1032,10 @@ def create_server(payload: ServerIn, background: BackgroundTasks):
                  ilo_version, ilo_firmware, manufacturer, model,
                  serial_number, uuid, bios_version, overall_health, state,
                  power_state, processor_summary, processor_count,
-                 memory_total_gib, server_group, notes, enabled, last_seen)
+                 memory_total_gib, server_group, notes, enabled, last_seen,
+                 ilo_license, ilo_protocol)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                        %s,%s,%s,%s,%s)
+                        %s,%s,%s,%s,%s,%s,%s)
                 """,
                 (
                     name,
@@ -958,6 +1060,8 @@ def create_server(payload: ServerIn, background: BackgroundTasks):
                     payload.notes,
                     1 if payload.enabled else 0,
                     datetime.now(),
+                    identity.get("ilo_license"),
+                    protocollo,
                 ),
             )
             server_id = cur.lastrowid
@@ -1013,9 +1117,10 @@ def update_server(server_id: int, payload: ServerUpdate):
                 or (payload.ilo_ip and payload.ilo_ip != current["ilo_ip"])
                 or (payload.ilo_user and payload.ilo_user != current["ilo_user"])
             )
+            protocollo = None
             if credentials_changed:
                 try:
-                    collector.probe(
+                    _, protocollo = collector.identifica(
                         new_ip, new_user, decrypt(password_enc)
                     )
                 except Exception as exc:
@@ -1056,6 +1161,9 @@ def update_server(server_id: int, payload: ServerUpdate):
                 sets.append("ilo_session_token=NULL")
                 sets.append("ilo_session_location=NULL")
                 sets.append("ilo_session_at=NULL")
+                # Un indirizzo nuovo puo' essere un iLO di altra generazione.
+                sets.append("ilo_protocol=%s")
+                args.append(protocollo)
             if payload.enabled is not None:
                 sets.append("enabled=%s")
                 args.append(1 if payload.enabled else 0)
@@ -1080,7 +1188,9 @@ def delete_server(server_id: int):
             row = one(cur, "SELECT name FROM servers WHERE id=%s", (server_id,))
             if not row:
                 raise HTTPException(404, "Server non trovato")
-            # Le tabelle figlie hanno ON DELETE CASCADE.
+            # Le tabelle figlie hanno ON DELETE CASCADE: con molto storico
+            # ci vuole tempo, quindi niente limite di durata qui.
+            cur.execute("SET SESSION max_statement_time=0")
             cur.execute("DELETE FROM servers WHERE id=%s", (server_id,))
             return {
                 "ok": True,
@@ -1119,7 +1229,8 @@ def test_connection(payload: TestIn):
         raise HTTPException(400, "Password iLO mancante")
 
     try:
-        identity = collector.probe(ip, user, password)
+        identity, protocollo = collector.identifica(ip, user, password)
+        identity["protocol"] = protocollo
     except Exception as exc:
         return JSONResponse(
             status_code=200, content={"ok": False, "error": str(exc)}
@@ -1223,6 +1334,9 @@ def power_action(server_id: int, payload: PowerIn):
     con = db()
     try:
         with con.cursor() as cur:
+            riga = one(cur, "SELECT * FROM servers WHERE id=%s", (server_id,))
+            if riga and riga.get("ilo_protocol") == "ribcl":
+                return _power_ribcl(cur, riga, payload.action.lower(), action)
             row, rf = _open_session(cur, server_id)
             try:
                 rf.post(
@@ -1247,12 +1361,40 @@ def power_action(server_id: int, payload: PowerIn):
         con.close()
 
 
+def _power_ribcl(cur, riga, azione, nome_azione):
+    from app import ribcl_collector
+    try:
+        stato = ribcl_collector.accensione(riga, azione)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"iLO ha rifiutato l'azione: {exc}")
+    if stato:
+        cur.execute("UPDATE servers SET power_state=%s WHERE id=%s",
+                    (stato, riga["id"]))
+    return {
+        "ok": True,
+        "message": f"Comando {nome_azione} inviato a {riga['name']}",
+        "power_state": stato,
+    }
+
+
 @app.post("/api/servers/{server_id}/led")
 def toggle_led(server_id: int):
     """Accende o spegne il LED di identificazione (UID)."""
     con = db()
     try:
         with con.cursor() as cur:
+            riga = one(cur, "SELECT * FROM servers WHERE id=%s", (server_id,))
+            if riga and riga.get("ilo_protocol") == "ribcl":
+                from app import ribcl_collector
+                try:
+                    target = ribcl_collector.led_uid(riga)
+                except Exception as exc:
+                    raise HTTPException(502, f"iLO ha rifiutato l'azione: {exc}")
+                cur.execute("UPDATE servers SET indicator_led=%s WHERE id=%s",
+                            (target, server_id))
+                return {"ok": True, "indicator_led": target}
             row, rf = _open_session(cur, server_id)
             try:
                 current = rf.get("/Systems/1/").get("IndicatorLED")
@@ -1267,6 +1409,336 @@ def toggle_led(server_id: int):
             finally:
                 rf.close()
             return {"ok": True, "indicator_led": target}
+    finally:
+        con.close()
+
+
+# ================================================================
+# SCRIPT PER WINDOWS: DISCHI E SMART DAL SISTEMA OPERATIVO
+# ================================================================
+# L'iLO non vede tutto: gli iLO 2 non conoscono gli NVMe su scheda
+# PCIe, e senza Agentless Management nemmeno gli iLO 5 vedono i dischi
+# sul SATA integrato. Windows invece li vede tutti, con i contatori
+# SMART. Lo script, generato qui per un server preciso, li legge e li
+# invia; si autentica con una chiave sua, di cui conserviamo solo
+# l'impronta.
+
+TIPI_BUS_NVME = {"nvme"}
+
+
+def _impronta(chiave):
+    return hashlib.sha256(chiave.encode("utf-8")).hexdigest()
+
+
+@app.get("/api/servers/{server_id}/agent-script")
+def agent_script(server_id: int, request: Request):
+    """Genera lo script per Windows del server. Ogni generazione crea
+    una chiave nuova e invalida quella dello script precedente."""
+    con = db()
+    try:
+        with con.cursor() as cur:
+            row = one(cur, "SELECT id, name FROM servers WHERE id=%s",
+                      (server_id,))
+            if not row:
+                raise HTTPException(404, "Server non trovato")
+            chiave = secrets.token_urlsafe(32)
+            cur.execute(
+                "UPDATE servers SET agent_token_hash=%s WHERE id=%s",
+                (_impronta(chiave), server_id),
+            )
+    finally:
+        con.close()
+
+    # L'indirizzo che il browser sta usando e' quello che il server
+    # Windows deve raggiungere: nginx lo passa nell'intestazione Host.
+    schema = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    pannello = f"{schema}://{host}" if host else str(request.base_url).rstrip("/")
+
+    nome_file = "ilo-monitor-dischi-" + re.sub(
+        r"[^A-Za-z0-9_-]", "_", row["name"])[:40] + ".ps1"
+    with open(os.path.join(os.path.dirname(__file__), "agent_dischi.ps1"),
+              encoding="utf-8") as fh:
+        testo = fh.read()
+    testo = (testo.replace("{{URL}}", pannello)
+                  .replace("{{TOKEN}}", chiave)
+                  .replace("{{NOME}}", row["name"].replace("'", ""))
+                  .replace("{{FILE}}", nome_file)
+                  .replace("{{DATA}}", datetime.now().strftime("%d/%m/%Y %H:%M")))
+    # BOM UTF-8 e fine riga Windows: PowerShell 5 legge cosi' senza
+    # sorprese anche gli accenti nei nomi dei server.
+    corpo = "﻿" + testo.replace("\r\n", "\n").replace("\n", "\r\n")
+    return Response(
+        content=corpo.encode("utf-8"),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{nome_file}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+def _intero(v):
+    try:
+        if v is None or v == "":
+            return None
+        return int(float(v))
+    except (TypeError, ValueError):
+        return None
+
+
+def _decimale(v):
+    try:
+        if v is None or v == "":
+            return None
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+# Attributi SMART ATA che indicano la vita residua (valore normalizzato,
+# 100 = nuovo), nell'ordine in cui li cerchiamo:
+#   231 SSD Life Left (Kingston, SandForce), 233 Media Wearout Indicator
+#   (Intel), 202 Percent Lifetime Remaining (Micron, Crucial),
+#   177 Wear Leveling Count (Samsung), 169 Remaining Life (vari).
+ATA_VITA = (231, 233, 202, 177, 169)
+ATA_NOMI = {
+    5: "Settori riallocati", 9: "Ore di accensione", 12: "Cicli di accensione",
+    177: "Wear leveling", 187: "Errori non correggibili riportati",
+    194: "Temperatura", 190: "Temperatura (flusso d'aria)",
+    196: "Eventi di riallocazione", 197: "Settori in attesa",
+    198: "Settori non correggibili", 199: "Errori CRC interfaccia",
+    202: "Vita residua %", 231: "Vita residua SSD", 233: "Indicatore di usura",
+    241: "Dati scritti (LBA)", 242: "Dati letti (LBA)",
+}
+
+
+def ore_e_anni(ore):
+    """44844 -> '44844 (5,1 anni)': le ore restano, gli anni si leggono."""
+    n = _intero(ore)
+    if n is None:
+        return ore
+    if n < 8760:
+        return str(n)
+    return f"{n} ({n / 8760:.1f} anni)".replace(".", ",")
+
+
+def interpreta_smart(d, bus, tipo):
+    """Dai contatori grezzi dello script ai valori del pannello.
+
+    Restituisce un dizionario con vita, usura, ore, temperatura, errori,
+    guasto previsto e le righe leggibili per il dettaglio.
+    """
+    esito = {"vita": None, "usura": None, "ore": None, "temperatura": None,
+             "errori": None, "guasto": None, "salute": None, "righe": []}
+    righe = esito["righe"]
+
+    nvme = d.get("nvme") if isinstance(d.get("nvme"), dict) else None
+    ata = d.get("ata") if isinstance(d.get("ata"), list) else None
+    if isinstance(d.get("ata"), dict):
+        ata = [d["ata"]]
+
+    if nvme and nvme.get("percentuale_usata") is not None:
+        usata = _intero(nvme.get("percentuale_usata"))
+        # Lo standard NVMe permette valori oltre 100: durata nominale
+        # superata, vita residua zero (non un dato da scartare).
+        esito["usura"] = usata
+        esito["vita"] = max(0, 100 - usata) if usata is not None else None
+        esito["ore"] = _intero(nvme.get("ore_accensione"))
+        kelvin = _intero(nvme.get("temperatura_kelvin"))
+        if kelvin and kelvin > 200:
+            esito["temperatura"] = kelvin - 273
+        esito["errori"] = _intero(nvme.get("errori_supporto"))
+        avviso = _intero(nvme.get("avviso_critico")) or 0
+        riserva = _intero(nvme.get("riserva"))
+        soglia = _intero(nvme.get("riserva_soglia"))
+        if avviso:
+            esito["guasto"] = True
+            esito["salute"] = "Critical"
+        elif riserva is not None and soglia is not None and riserva < soglia:
+            esito["salute"] = "Warning"
+        gb = lambda u: round((_intero(u) or 0) * 512000 / 1e12, 2)
+        righe += [
+            ("Usura (Percentage Used)", f"{usata}%"),
+            ("Riserva disponibile", f"{riserva}% (soglia {soglia}%)"),
+            ("Dati scritti", f"{gb(nvme.get('unita_scritte'))} TB"),
+            ("Dati letti", f"{gb(nvme.get('unita_lette'))} TB"),
+            ("Ore di accensione", ore_e_anni(nvme.get("ore_accensione"))),
+            ("Cicli di accensione", nvme.get("cicli_accensione")),
+            ("Spegnimenti anomali", nvme.get("spegnimenti_anomali")),
+            ("Errori del supporto", nvme.get("errori_supporto")),
+            ("Voci nel registro errori", nvme.get("voci_registro_errori")),
+            ("Avviso critico", "nessuno" if not avviso else f"codice {avviso}"),
+        ]
+
+    elif ata:
+        attr = {}
+        for a in ata:
+            if isinstance(a, dict) and _intero(a.get("id")):
+                attr[_intero(a["id"])] = a
+        if tipo != "HDD":
+            for codice in ATA_VITA:
+                a = attr.get(codice)
+                v = _intero(a.get("valore")) if a else None
+                if v is not None and 0 < v <= 100:
+                    esito["vita"] = v
+                    esito["usura"] = 100 - v
+                    break
+        if 9 in attr:
+            esito["ore"] = (_intero(attr[9].get("grezzo")) or 0) & 0xFFFFFFFF
+        for codice in (194, 190):
+            if codice in attr:
+                t = (_intero(attr[codice].get("grezzo")) or 0) & 0xFF
+                if 0 < t < 120:
+                    esito["temperatura"] = t
+                    break
+        errori = [(_intero(attr[c].get("grezzo")) or 0) & 0xFFFFFFFF
+                  for c in (187, 198) if c in attr]
+        if errori:
+            esito["errori"] = sum(errori)
+        if (_intero((attr.get(197) or {}).get("grezzo")) or 0) & 0xFFFFFFFF:
+            esito["salute"] = "Warning"
+        if 241 in attr:
+            # Samsung, Kingston e molti altri contano blocchi da 512 byte.
+            scritti = (_intero(attr[241].get("grezzo")) or 0) * 512 / 1e12
+            if 0 < scritti < 10000:
+                righe.append(("Dati scritti (stima)", f"{scritti:.2f} TB"))
+        if esito["ore"] is not None:
+            righe.append(("Ore di accensione", ore_e_anni(esito["ore"])))
+        for codice in sorted(attr):
+            a = attr[codice]
+            nome = ATA_NOMI.get(codice, f"Attributo {codice}")
+            righe.append((f"{codice} {nome}",
+                          f"valore {a.get('valore')}, peggiore {a.get('peggiore')}, "
+                          f"grezzo {a.get('grezzo')}"))
+
+    if d.get("previsione_guasto") is True:
+        esito["guasto"] = True
+        esito["salute"] = "Critical"
+
+    # Ripiego sui contatori di Windows dove la lettura diretta non c'e'.
+    if esito["ore"] is None:
+        esito["ore"] = _intero(d.get("ore_accensione"))
+    if esito["temperatura"] is None:
+        t = _decimale(d.get("temperatura"))
+        esito["temperatura"] = t if t and t > 0 else None
+    if esito["errori"] is None:
+        e = [_intero(d.get("errori_lettura")), _intero(d.get("errori_scrittura"))]
+        if any(x is not None for x in e):
+            esito["errori"] = sum(x for x in e if x is not None)
+    if esito["vita"] is None:
+        usura = _decimale(d.get("usura"))
+        # Il "Wear" di Windows: preso solo se diverso da 0 (0 di solito
+        # vuol dire "non lo so", non "disco nuovo").
+        if usura:
+            esito["usura"] = usura
+            esito["vita"] = collector.life_left(usura, consumed=True)
+
+    righe += [(nome, d.get(chiave)) for nome, chiave in (
+        ("Temperatura massima (Windows)", "temperatura_max"),
+        ("Errori di lettura corretti", "errori_lettura_corretti"),
+        ("Errori di scrittura corretti", "errori_scrittura_corretti"),
+        ("Latenza lettura max ms", "latenza_lettura_max_ms"),
+        ("Latenza scrittura max ms", "latenza_scrittura_max_ms"),
+        ("Firmware", "firmware"), ("Collegamento", "bus"),
+        ("Posizione", "posizione"),
+    ) if d.get(chiave) not in (None, "", 0)]
+    esito["righe"] = [[str(a), str(b)] for a, b in righe if b not in (None, "")]
+    return esito
+
+
+def _posizione(testo, numero):
+    t = str(testo or "")
+    m = re.search(r"Slot\s*(\d+)", t, re.I)
+    if m:
+        return f"Slot PCIe {m.group(1)}"
+    return f"Disco {numero}" if numero not in (None, "") else "Disco"
+
+
+@app.post("/api/agent/drives")
+async def agent_drives(request: Request):
+    autorizzazione = request.headers.get("authorization") or ""
+    if not autorizzazione.lower().startswith("bearer "):
+        raise HTTPException(401, "Chiave mancante")
+    chiave = autorizzazione[7:].strip()
+    if len(chiave) < 20:
+        raise HTTPException(401, "Chiave non valida")
+
+    try:
+        dati = await request.json()
+    except Exception:
+        raise HTTPException(400, "Corpo della richiesta non valido")
+    dischi = dati.get("dischi") or []
+    if isinstance(dischi, dict):
+        dischi = [dischi]
+    if not isinstance(dischi, list) or len(dischi) > 128:
+        raise HTTPException(400, "Elenco dei dischi non valido")
+
+    con = db()
+    try:
+        with con.cursor() as cur:
+            row = one(
+                cur,
+                "SELECT id, name FROM servers WHERE agent_token_hash=%s",
+                (_impronta(chiave),),
+            )
+            if not row:
+                raise HTTPException(
+                    401, "Chiave non riconosciuta: rigenera lo script dal pannello")
+            server_id = row["id"]
+            adesso = collector.now()
+            salvati = 0
+            for n, d in enumerate(dischi, start=1):
+                if not isinstance(d, dict):
+                    continue
+                bus = str(d.get("bus") or "").strip()
+                tipo = str(d.get("tipo") or "").strip().upper()
+                if tipo not in ("SSD", "HDD", "SCM"):
+                    tipo = "SSD" if bus.lower() in TIPI_BUS_NVME else None
+                smart = interpreta_smart(d, bus, tipo)
+                giri = _intero(d.get("giri"))
+                if giri is not None and not (0 < giri < 100000):
+                    giri = None
+                salute = {"healthy": "OK", "warning": "Warning",
+                          "unhealthy": "Critical"}.get(
+                    str(d.get("salute") or "").strip().lower())
+                # Il peggiore fra il giudizio di Windows e quello SMART.
+                ordine = {None: 0, "OK": 1, "Warning": 2, "Critical": 3}
+                if ordine.get(smart["salute"], 0) > ordine.get(salute, 0):
+                    salute = smart["salute"]
+                seriale = str(d.get("seriale") or "").strip() or None
+                cur.execute(
+                    """
+                    INSERT INTO physical_drives
+                    (server_id, collected_at, drive_id, bay, manufacturer,
+                     model, revision, protocol, media_type, capacity_bytes,
+                     rotation_rpm, negotiated_speed_gbs, health, state,
+                     failure_predicted, media_life_left_percent, serial_number,
+                     endurance_used_percent, power_on_hours, source,
+                     temperature_c, uncorrected_errors, smart_json)
+                    VALUES (%s,%s,%s,%s,NULL,%s,%s,%s,%s,%s,%s,NULL,%s,%s,
+                            %s,%s,%s,%s,%s,'os',%s,%s,%s)
+                    """,
+                    (
+                        server_id, adesso,
+                        ("os-" + (seriale or str(d.get("numero") or n)))[:100],
+                        _posizione(d.get("posizione"), d.get("numero"))[:100],
+                        (str(d.get("modello") or "").strip() or None),
+                        (str(d.get("firmware") or "").strip() or None),
+                        bus or None, tipo,
+                        _intero(d.get("dimensione")),
+                        giri, salute, "Enabled",
+                        smart["guasto"], smart["vita"], seriale, smart["usura"],
+                        smart["ore"], smart["temperatura"], smart["errori"],
+                        json.dumps({"righe": smart["righe"]}, ensure_ascii=False),
+                    ),
+                )
+                salvati += 1
+            cur.execute(
+                "UPDATE servers SET agent_last_at=%s, agent_host=%s WHERE id=%s",
+                (adesso, str(dati.get("host") or "")[:255] or None, server_id),
+            )
+            return {"ok": True, "server": row["name"], "salvati": salvati}
     finally:
         con.close()
 
@@ -1411,6 +1883,65 @@ def thermal_map():
                     "temp_critical_c": float(
                         settings.get("temp_critical_c", 70)
                     ),
+                },
+            }
+    finally:
+        con.close()
+
+
+# ================================================================
+# DISCHI FISICI DI TUTTI I SERVER
+# ================================================================
+
+
+@app.get("/api/drives")
+def drives_overview():
+    """Ultimo inventario dei dischi di ogni server abilitato.
+
+    Ordinati per vita residua crescente: i dischi da tenere d'occhio
+    vengono per primi, quelli che non la riportano (HDD) in fondo.
+    """
+    con = db()
+    try:
+        with con.cursor() as cur:
+            server = many(
+                cur,
+                "SELECT id, name, ilo_ip, model FROM servers "
+                "WHERE enabled=1 ORDER BY name",
+            )
+            rows = []
+            for srv in server:
+                for d in ultimi_dischi(cur, srv["id"]):
+                    d["server_name"] = srv["name"]
+                    d["ilo_ip"] = srv["ilo_ip"]
+                    d["server_model"] = srv["model"]
+                    rows.append(d)
+
+            def ordine(d):
+                vita = d.get("media_life_left_percent")
+                return (vita is None, float(vita) if vita is not None else 0,
+                        str(d["server_name"]), str(d.get("bay") or ""))
+
+            rows.sort(key=ordine)
+            senza = many(
+                cur,
+                """
+                SELECT s.id, s.name, s.ilo_ip
+                FROM servers s
+                WHERE s.enabled=1
+                  AND NOT EXISTS (
+                      SELECT 1 FROM physical_drives d WHERE d.server_id=s.id
+                  )
+                ORDER BY s.name
+                """,
+            )
+            return {
+                "ok": True,
+                "data": {
+                    "drives": rows,
+                    "servers_without_data": senza,
+                    "life_warning": 30,
+                    "life_critical": 10,
                 },
             }
     finally:
@@ -1841,6 +2372,7 @@ def purge_login_events():
     con = db()
     try:
         with con.cursor() as cur:
+            cur.execute("SET SESSION max_statement_time=0")
             cur.execute(
                 """
                 DELETE FROM ilo_events

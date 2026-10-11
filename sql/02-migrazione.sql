@@ -94,6 +94,36 @@ CALL add_column_if_missing('servers', 'memory_total_gib',
 CALL add_column_if_missing('ilo_events', 'log_source',
     '`log_source` VARCHAR(20) NOT NULL DEFAULT ''IEL''');
 
+CALL add_column_if_missing('physical_drives', 'serial_number',
+    '`serial_number` VARCHAR(100) NULL');
+CALL add_column_if_missing('physical_drives', 'endurance_used_percent',
+    '`endurance_used_percent` DECIMAL(8,2) NULL');
+CALL add_column_if_missing('physical_drives', 'power_on_hours',
+    '`power_on_hours` INT NULL');
+CALL add_column_if_missing('servers', 'ams_status',
+    '`ams_status` VARCHAR(30) NULL');
+CALL add_column_if_missing('servers', 'host_os',
+    '`host_os` VARCHAR(255) NULL');
+-- NULL o 'redfish' per iLO 4/5/6, 'ribcl' per iLO 2 e 3.
+CALL add_column_if_missing('servers', 'ilo_protocol',
+    '`ilo_protocol` VARCHAR(10) NULL');
+-- Dischi inviati dallo script per Windows (sorgente 'os'), con i
+-- contatori SMART che l'iLO non conosce.
+CALL add_column_if_missing('physical_drives', 'source',
+    '`source` VARCHAR(10) NULL');
+CALL add_column_if_missing('physical_drives', 'temperature_c',
+    '`temperature_c` DECIMAL(6,1) NULL');
+CALL add_column_if_missing('physical_drives', 'uncorrected_errors',
+    '`uncorrected_errors` BIGINT NULL');
+CALL add_column_if_missing('physical_drives', 'smart_json',
+    '`smart_json` TEXT NULL');
+CALL add_column_if_missing('servers', 'agent_token_hash',
+    '`agent_token_hash` CHAR(64) NULL');
+CALL add_column_if_missing('servers', 'agent_last_at',
+    '`agent_last_at` DATETIME NULL');
+CALL add_column_if_missing('servers', 'agent_host',
+    '`agent_host` VARCHAR(255) NULL');
+
 DROP PROCEDURE IF EXISTS add_column_if_missing;
 
 -- La chiave unica deve includere la sorgente: IEL (log dell'iLO) e
@@ -311,3 +341,20 @@ ON DUPLICATE KEY UPDATE setting_key = setting_key;
 
 CREATE INDEX IF NOT EXISTS idx_events_created
     ON ilo_events (event_created);
+
+-- ------------------------------------------------------------
+-- Consumi a zero: sono "non misurato", non zero watt
+-- ------------------------------------------------------------
+-- I server con alimentatore non gestito (es. ML30 Gen9) riportano 0
+-- invece di omettere il valore. Un server acceso non consuma zero
+-- watt: lo zero falserebbe medie, totali e grafici. Idempotente.
+UPDATE power_metrics SET consumed_watts = NULL WHERE consumed_watts = 0;
+UPDATE power_metrics SET average_watts  = NULL WHERE average_watts  = 0;
+UPDATE power_metrics SET maximum_watts  = NULL WHERE maximum_watts  = 0;
+UPDATE power_metrics SET minimum_watts  = NULL WHERE minimum_watts  = 0;
+
+-- ------------------------------------------------------------
+-- Statistiche aggiornate per le tabelle che crescono di piu':
+-- con stime vecchie MariaDB puo' scegliere piani lenti.
+-- ------------------------------------------------------------
+ANALYZE TABLE system_metrics, power_metrics, thermal_sensors, ilo_events;

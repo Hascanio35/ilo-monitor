@@ -1,5 +1,5 @@
 <#
-  iLO Monitor - dischi di questo server: stato SMART e vita residua
+  iLO Monitor - dischi (e sensori) di questo server
 
   Server nel pannello : {{NOME}}
   Pannello            : {{URL}}
@@ -10,28 +10,45 @@
   pannello. La chiave qui sotto vale solo per questo server: generando
   un nuovo script dal pannello, questa smette di funzionare.
 
+  Per i server la cui scheda di gestione non legge i sensori (per
+  esempio una scheda IPMI su scheda madre non supportata) lo script
+  invia anche temperature, ventole e carico, letti con
+  LibreHardwareMonitor: vedi SENSORI piu' sotto.
+
   INSTALLAZIONE (una volta, da PowerShell aperto come amministratore):
 
       powershell -ExecutionPolicy Bypass -File .\{{FILE}} -Installa
 
   Copia lo script in C:\ProgramData\iLO-Monitor, crea l'attivita'
-  pianificata "iLO Monitor - dischi" (ogni ora e all'avvio, come SYSTEM)
-  e invia subito i dati.
+  pianificata "iLO Monitor - dischi" (come SYSTEM, all'avvio e ogni ora;
+  ogni 5 minuti se invia anche i sensori) e invia subito i dati.
 
   Altri usi:
-      .\{{FILE}} -Mostra     mostra i dischi letti, senza inviare nulla
+      .\{{FILE}} -Mostra     mostra cosa legge, senza inviare nulla
       .\{{FILE}} -Rimuovi    toglie l'attivita' pianificata
+
+  SENSORI (solo se il pannello li chiede per questo server)
+      Le temperature si leggono con la libreria di LibreHardwareMonitor,
+      che -Installa scarica da sola da nuget.org (versione per .NET
+      Framework) in C:\ProgramData\iLO-Monitor\lhm-<data>. Serve in piu' il
+      driver PawnIO, che legge CPU e scheda madre; se manca:
+          winget install namazso.PawnIO
+      oppure avviando una volta LibreHardwareMonitor come amministratore
+      e accettando l'installazione proposta.
 
   Requisiti: Windows Server 2012 o successivo (PowerShell 4+).
   L'ultimo esito si trova in C:\ProgramData\iLO-Monitor\ultimo-invio.log
 #>
-param([switch]$Installa, [switch]$Rimuovi, [switch]$Mostra)
+param([switch]$Installa, [switch]$Rimuovi, [switch]$Mostra, [string]$Lhm)
 
 $Pannello     = '{{URL}}'
 $Chiave       = '{{TOKEN}}'
+$InviaSensori = ('{{SENSORI}}' -eq '1')
 $NomeAttivita = 'iLO Monitor - dischi'
 $Cartella     = Join-Path $env:ProgramData 'iLO-Monitor'
 $FileLog      = Join-Path $Cartella 'ultimo-invio.log'
+$FileDischi   = Join-Path $Cartella 'ultimo-invio-dischi.txt'
+$CartellaLhm  = Join-Path $Cartella 'lhm'
 
 $ErrorActionPreference = 'Stop'
 
@@ -289,6 +306,362 @@ function Leggi-Dischi {
     return ,$esito
 }
 
+# ------------------------------------------------------------------
+# Sensori: temperature, ventole e carico con LibreHardwareMonitor
+# ------------------------------------------------------------------
+
+$CodiceRisolutore = @'
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+
+public static class IloMonitorLhm2 {
+    static string cartella;
+    // Dictionary e non HashSet: sta in mscorlib, che Add-Type referenzia sempre.
+    static readonly Dictionary<string, bool> inCorso = new Dictionary<string, bool>();
+    // Le librerie di LibreHardwareMonitor chiedono versioni precise delle
+    // loro dipendenze: senza un file .config PowerShell non le trova.
+    // Si risponde con il file omonimo della cartella, qualunque versione
+    // chieda; per le librerie di sistema (System.Management...) con
+    // quella installata in Windows.
+    public static void Registra(string percorso) {
+        bool prima = cartella == null;
+        cartella = percorso;
+        if (!prima) return;
+        AppDomain.CurrentDomain.AssemblyResolve += delegate(object s, ResolveEventArgs e) {
+            string nome = new AssemblyName(e.Name).Name;
+            string file = Path.Combine(cartella, nome + ".dll");
+            if (File.Exists(file)) return Assembly.LoadFrom(file);
+            if (!(nome.StartsWith("System.") || nome.StartsWith("Microsoft."))) return null;
+            lock (inCorso) { if (inCorso.ContainsKey(nome)) return null; inCorso[nome] = true; }
+            try {
+#pragma warning disable 618
+                return Assembly.LoadWithPartialName(nome);
+#pragma warning restore 618
+            } catch { return null; }
+            finally { lock (inCorso) { inCorso.Remove(nome); } }
+        };
+    }
+}
+'@
+
+# Cartelle lib dei pacchetti NuGet utilizzabili da .NET Framework 4.8,
+# in ordine di preferenza.
+$TfmUtili = @('net481','net48','net472','net471','net47','net462','net461','net46',
+    'net452','net451','net45','net403','net40','net35','net20',
+    'netstandard2.0','netstandard1.6','netstandard1.5','netstandard1.4',
+    'netstandard1.3','netstandard1.2','netstandard1.1','netstandard1.0')
+$Architettura = if ([Environment]::Is64BitProcess) { 'win-x64' } else { 'win-x86' }
+# Gia' presenti in Windows: si usano quelle di sistema.
+$PacchettiDiSistema = @('system.management','system.codedom','netstandard.library',
+    'microsoft.netcore.platforms','microsoft.netcore.targets')
+
+# Ogni installazione della libreria va in una cartella nuova
+# (lhm-<data>): una libreria gia' caricata da un altro PowerShell aperto
+# non si puo' cancellare ne' sovrascrivere finche' quello non si chiude.
+function Cartella-Lhm-Attiva {
+    $c = Get-ChildItem -Path $Cartella -Directory -Filter 'lhm-*' -ErrorAction SilentlyContinue |
+        Where-Object { (Test-Path (Join-Path $_.FullName 'LibreHardwareMonitorLib.dll')) -and
+                       (Test-Path (Join-Path $_.FullName 'nuget.txt')) } |
+        Sort-Object Name | Select-Object -Last 1
+    if ($c) { return $c.FullName }
+    return $null
+}
+
+function Lhm-Pronto {
+    return [bool](Cartella-Lhm-Attiva)
+}
+
+function Tfm-Breve($tfm) {
+    $t = "$tfm".Trim().ToLower()
+    if ($t -match '^\.netframework(\d)\.(\d)(?:\.(\d))?$') { return 'net' + $matches[1] + $matches[2] + $matches[3] }
+    if ($t -match '^\.netstandard(\d+\.\d+)$') { return 'netstandard' + $matches[1] }
+    return $t
+}
+
+function Versione-Minima($intervallo) {
+    $v = ("$intervallo".Trim().TrimStart('[', '(').Split(',')[0]).Trim().TrimEnd(']', ')').Trim()
+    if ($v -match '^\d+\.\d+$') { $v += '.0' }
+    return $v.ToLower()
+}
+
+function Scarica-Lhm($destinazione) {
+    # Scarica LibreHardwareMonitorLib e le sue dipendenze da nuget.org,
+    # prendendo da ogni pacchetto la versione per .NET Framework.
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $ProgressPreference = 'SilentlyContinue'   # la barra di avanzamento rallenta molto i download
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $base = 'https://api.nuget.org/v3-flatcontainer'
+    $tmp = Join-Path $env:TEMP ('ilomon-nuget-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    New-Item -ItemType Directory -Force -Path $destinazione | Out-Null
+    $elenco = @()
+    try {
+        $versioni = @((Invoke-RestMethod -Uri "$base/librehardwaremonitorlib/index.json" -UseBasicParsing).versions)
+        $radice = @($versioni | Where-Object { $_ -notmatch '-' })[-1]
+        $coda = New-Object System.Collections.Queue
+        $coda.Enqueue(@('LibreHardwareMonitorLib', $radice))
+        $fatti = @{}
+        while ($coda.Count -gt 0) {
+            $voce = $coda.Dequeue()
+            $id = "$($voce[0])"; $ver = "$($voce[1])".ToLower(); $chiave = $id.ToLower()
+            if ($fatti.ContainsKey($chiave) -or $PacchettiDiSistema -contains $chiave) { continue }
+            $fatti[$chiave] = $ver
+            $pacchetto = Join-Path $tmp "$chiave.$ver.nupkg"
+            Invoke-WebRequest -Uri "$base/$chiave/$ver/$chiave.$ver.nupkg" -OutFile $pacchetto -UseBasicParsing
+            $dir = Join-Path $tmp $chiave
+            [IO.Compression.ZipFile]::ExtractToDirectory($pacchetto, $dir)
+
+            # Alcuni pacchetti (LibreHardwareMonitorLib compreso) tengono la
+            # libreria per architettura, in runtimes\win-x64\lib\<versione>.
+            $scelta = $null; $cartellaScelta = $null
+            foreach ($t in $TfmUtili) {
+                foreach ($c in @("runtimes\$Architettura\lib\$t", "lib\$t")) {
+                    if (Test-Path (Join-Path $dir $c)) { $scelta = $t; $cartellaScelta = Join-Path $dir $c; break }
+                }
+                if ($scelta) { break }
+            }
+            $nativa = Join-Path $dir "runtimes\$Architettura\native"
+            if (Test-Path $nativa) {
+                Get-ChildItem -Path $nativa -Filter '*.dll' | ForEach-Object { Copy-Item -Path $_.FullName -Destination $destinazione -Force }
+            }
+            if ($scelta) {
+                $dll = @(Get-ChildItem -Path $cartellaScelta -Filter '*.dll')
+                foreach ($f in $dll) { Copy-Item -Path $f.FullName -Destination $destinazione -Force }
+                if ($dll.Count) { $elenco += "$id $ver ($scelta)" }
+            } elseif ($chiave -eq 'librehardwaremonitorlib') {
+                throw "il pacchetto LibreHardwareMonitorLib $ver non ha una versione per .NET Framework"
+            }
+
+            $nuspec = Get-ChildItem -Path $dir -Filter '*.nuspec' | Select-Object -First 1
+            if (-not $nuspec) { continue }
+            [xml]$x = Get-Content -Path $nuspec.FullName -Raw
+            $nodo = $x.package.metadata.dependencies
+            if (-not $nodo) { continue }
+            $dipendenze = @()
+            $gruppi = @($nodo.ChildNodes | Where-Object { $_.LocalName -eq 'group' })
+            if ($gruppi.Count) {
+                $gruppo = $null
+                $ordine = @()
+                if ($scelta) { $ordine += $scelta }
+                $ordine += $TfmUtili
+                foreach ($t in $ordine) {
+                    $gruppo = $gruppi | Where-Object { (Tfm-Breve $_.GetAttribute('targetFramework')) -eq $t } | Select-Object -First 1
+                    if ($gruppo) { break }
+                }
+                if (-not $gruppo) { $gruppo = $gruppi | Where-Object { -not $_.GetAttribute('targetFramework') } | Select-Object -First 1 }
+                if ($gruppo) { $dipendenze = @($gruppo.ChildNodes | Where-Object { $_.LocalName -eq 'dependency' }) }
+            } else {
+                $dipendenze = @($nodo.ChildNodes | Where-Object { $_.LocalName -eq 'dependency' })
+            }
+            foreach ($d in $dipendenze) {
+                $coda.Enqueue(@($d.GetAttribute('id'), (Versione-Minima $d.GetAttribute('version'))))
+            }
+        }
+    } finally {
+        Remove-Item -Path $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Get-ChildItem -Path $destinazione -Filter '*.dll' | Unblock-File -ErrorAction SilentlyContinue
+    $elenco | Out-File -FilePath (Join-Path $destinazione 'nuget.txt') -Encoding UTF8
+    return ,$elenco
+}
+
+function Installa-Lhm {
+    # Si scarica in una cartella nuova; le precedenti si tolgono se si
+    # puo' (se sono in uso restano, e verranno tolte la volta dopo).
+    $nuova = Join-Path $Cartella ('lhm-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    try {
+        $elenco = Scarica-Lhm $nuova
+    } catch {
+        Remove-Item -Path $nuova -Recurse -Force -ErrorAction SilentlyContinue
+        throw
+    }
+    Get-ChildItem -Path $Cartella -Directory -ErrorAction SilentlyContinue |
+        Where-Object { ($_.Name -eq 'lhm' -or $_.Name -like 'lhm-*' -or $_.Name -like 'lhm.*') -and $_.FullName -ne $nuova } |
+        ForEach-Object { Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+    return ,$elenco
+}
+
+function PawnIO-Installato {
+    foreach ($radice in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO')) {
+        try {
+            $v = (Get-ItemProperty -Path $radice -ErrorAction Stop).DisplayVersion
+            if ($v) { return "$v" }
+        } catch { }
+    }
+    return $null
+}
+
+function Numero($v) {
+    if ($null -eq $v) { return $null }
+    $x = [double]$v
+    if ([double]::IsNaN($x) -or [double]::IsInfinity($x)) { return $null }
+    return [math]::Round($x, 1)
+}
+
+function Leggi-Sensori {
+    if (-not (Lhm-Pronto)) {
+        throw "libreria di LibreHardwareMonitor non installata: rilanciare lo script con -Installa"
+    }
+    $cartellaLib = Cartella-Lhm-Attiva
+    if (-not ('IloMonitorLhm2' -as [type])) {
+        Add-Type -TypeDefinition $CodiceRisolutore -Language CSharp -ErrorAction Stop
+    }
+    [IloMonitorLhm2]::Registra($cartellaLib)
+    $lib = [Reflection.Assembly]::LoadFrom((Join-Path $cartellaLib 'LibreHardwareMonitorLib.dll'))
+
+    # PowerShell 5 gira su .NET Framework: una libreria compilata per
+    # .NET moderno si carica ma non funziona. Si riconosce dai riferimenti.
+    $riferimenti = @($lib.GetReferencedAssemblies())
+    if (-not ($riferimenti | Where-Object { $_.Name -eq 'mscorlib' })) {
+        $rt = $riferimenti | Where-Object { $_.Name -eq 'System.Runtime' } | Select-Object -First 1
+        $quale = if ($rt) { ".NET $($rt.Version.Major)" } else { '.NET moderno' }
+        throw "la libreria in $cartellaLib e' per ${quale}, non per .NET Framework: rilanciare lo script con -Installa"
+    }
+    try {
+        $tipo = $lib.GetType('LibreHardwareMonitor.Hardware.Computer', $true)
+        $pc = [Activator]::CreateInstance($tipo)
+    } catch {
+        $e = $_.Exception
+        $dettagli = @($e.GetBaseException().Message)
+        $rtl = $e
+        while ($rtl -and -not ($rtl -is [Reflection.ReflectionTypeLoadException])) { $rtl = $rtl.InnerException }
+        if ($rtl) { $dettagli += @($rtl.LoaderExceptions | Select-Object -First 3 | ForEach-Object { $_.Message }) }
+        throw "libreria di LibreHardwareMonitor non caricabile: $($dettagli -join ' | ')"
+    }
+    $pc.IsCpuEnabled = $true
+    $pc.IsMotherboardEnabled = $true
+    $pc.IsMemoryEnabled = $true
+    $pc.IsGpuEnabled = $true
+    $pc.IsPsuEnabled = $true
+    $pc.Open()
+    try {
+        $tutti = New-Object System.Collections.ArrayList
+        $raccogli = {
+            param($hw)
+            $hw.Update()
+            foreach ($sub in $hw.SubHardware) { & $raccogli $sub }
+        }
+        # Il carico si calcola fra due letture: la prima prepara, la
+        # seconda misura.
+        foreach ($hw in $pc.Hardware) { & $raccogli $hw }
+        Start-Sleep -Milliseconds 1500
+        foreach ($hw in $pc.Hardware) { & $raccogli $hw }
+
+        $elenca = {
+            param($hw)
+            foreach ($s in $hw.Sensors) { [void]$tutti.Add($s) }
+            foreach ($sub in $hw.SubHardware) { & $elenca $sub }
+        }
+        foreach ($hw in $pc.Hardware) { & $elenca $hw }
+
+        $temperature = @()
+        $ventole = @()
+        $caricoCpu = $null; $memoria = $null; $potenzaCpu = $null
+        foreach ($s in $tutti) {
+            $v = Numero $s.Value
+            if ($null -eq $v) { continue }
+            $tipoHw = "$($s.Hardware.HardwareType)"
+            $nome = "$($s.Name)".Trim()
+            switch ("$($s.SensorType)") {
+                'Temperature' {
+                    # Un valore per sensore utile: niente singoli core
+                    # e niente "distanza dal limite", che non e' una
+                    # temperatura.
+                    if ($nome -match 'Distance to TjMax|Limit|Threshold|Resolution|^CPU Core #\d+|^Core #\d+|^P-Core #\d+|^E-Core #\d+') { continue }
+                    if ($v -le 5 -or $v -ge 125) { continue }
+                    $temperature += New-Object PSObject -Property ([ordered]@{
+                        gruppo = $tipoHw; componente = "$($s.Hardware.Name)"; nome = $nome; valore = $v })
+                }
+                'Fan' {
+                    if ($v -le 0) { continue }   # connettore senza ventola
+                    $ventole += New-Object PSObject -Property ([ordered]@{
+                        gruppo = $tipoHw; componente = "$($s.Hardware.Name)"; nome = $nome; giri = [int]$v })
+                }
+                'Load' {
+                    if ($tipoHw -eq 'Cpu' -and $nome -eq 'CPU Total' -and $null -eq $caricoCpu) { $caricoCpu = $v }
+                    if ($tipoHw -eq 'Memory' -and $nome -eq 'Memory' -and "$($s.Hardware.Name)" -notmatch 'Virtual' -and $null -eq $memoria) { $memoria = $v }
+                }
+                'Power' {
+                    if ($tipoHw -eq 'Cpu' -and $nome -match '^(CPU )?Package$' -and $null -eq $potenzaCpu) { $potenzaCpu = $v }
+                }
+            }
+        }
+        $versione = $null
+        try { $versione = "$($lib.GetName().Version)" } catch { }
+        return New-Object PSObject -Property ([ordered]@{
+            temperature = @($temperature)
+            ventole     = @($ventole)
+            carico_cpu  = $caricoCpu
+            memoria     = $memoria
+            potenza_cpu = $potenzaCpu
+            fonte       = "LibreHardwareMonitor $versione"
+            pawnio      = PawnIO-Installato
+        })
+    } finally {
+        try { $pc.Close() } catch { }
+    }
+}
+
+# ------------------------------------------------------------------
+# Inventario dal sistema operativo (per i server la cui scheda di
+# gestione non lo conosce)
+# ------------------------------------------------------------------
+
+function Testo-Utile($v) {
+    $t = "$v".Trim()
+    if (-not $t -or $t -match '^(System Product Name|System manufacturer|System Serial Number|To be filled by O\.E\.M\.|Default string|Not Applicable|None|0+)$') { return $null }
+    return $t
+}
+
+function Leggi-Inventario {
+    $cs = Get-CimInstance Win32_ComputerSystem
+    $os = Get-CimInstance Win32_OperatingSystem
+    $bios = Get-CimInstance Win32_BIOS
+    $scheda = Get-CimInstance Win32_BaseBoard
+    $tipiMemoria = @{20='DDR';21='DDR2';24='DDR3';26='DDR4';34='DDR5';35='LPDDR5'}
+
+    # Sulle schede madri da PC il modello del "sistema" e' un segnaposto:
+    # quello vero e' il modello della scheda madre.
+    $modello = Testo-Utile $cs.Model
+    $produttore = Testo-Utile $cs.Manufacturer
+    if (-not $modello) { $modello = Testo-Utile $scheda.Product; $produttore = Testo-Utile $scheda.Manufacturer }
+    $seriale = Testo-Utile $bios.SerialNumber
+    if (-not $seriale) { $seriale = Testo-Utile $scheda.SerialNumber }
+    $dataBios = $null
+    try { if ($bios.ReleaseDate) { $dataBios = $bios.ReleaseDate.ToString('dd/MM/yyyy') } } catch { }
+
+    $processori = @(Get-CimInstance Win32_Processor | ForEach-Object {
+        New-Object PSObject -Property ([ordered]@{
+            socket = "$($_.SocketDesignation)".Trim(); modello = "$($_.Name)".Trim()
+            produttore = "$($_.Manufacturer)".Trim(); mhz = $_.MaxClockSpeed
+            core = $_.NumberOfCores; thread = $_.NumberOfLogicalProcessors })
+    })
+    $memoria = @(Get-CimInstance Win32_PhysicalMemory | ForEach-Object {
+        $tipo = $null
+        try { $tipo = $tipiMemoria[[int]$_.SMBIOSMemoryType] } catch { }
+        $mhz = $_.ConfiguredClockSpeed
+        if (-not $mhz) { $mhz = $_.Speed }
+        New-Object PSObject -Property ([ordered]@{
+            posizione = "$($_.DeviceLocator)".Trim(); mib = [int64]($_.Capacity / 1MB)
+            mhz = $mhz; tipo = $tipo; produttore = "$($_.Manufacturer)".Trim()
+            codice = "$($_.PartNumber)".Trim() })
+    })
+    return New-Object PSObject -Property ([ordered]@{
+        hostname   = "$($cs.DNSHostName)"
+        produttore = $produttore
+        modello    = $modello
+        seriale    = $seriale
+        bios       = (@("$($bios.SMBIOSBIOSVersion)".Trim(), $dataBios) | Where-Object { $_ }) -join ' '
+        so         = "$($os.Caption)".Trim() + ' ' + "$($os.Version)"
+        avvio      = $os.LastBootUpTime.ToUniversalTime().ToString('s')
+        processori = $processori
+        memoria    = $memoria
+    })
+}
+
 function Scrivi-Log($testo) {
     try {
         New-Item -ItemType Directory -Force -Path $Cartella | Out-Null
@@ -315,52 +688,129 @@ if ($Installa) {
     if ($PSCommandPath -ne $destinazione) {
         Copy-Item -Path $PSCommandPath -Destination $destinazione -Force
     }
+    if ($InviaSensori) {
+        Write-Host "Scarico la libreria di LibreHardwareMonitor da nuget.org..."
+        try {
+            $elenco = Installa-Lhm
+            Write-Host "Libreria installata in $(Cartella-Lhm-Attiva):"
+            $elenco | ForEach-Object { Write-Host "   $_" }
+        } catch {
+            Write-Host "Download non riuscito: $($_.Exception.Message)" -ForegroundColor Yellow
+            if (Lhm-Pronto) { Write-Host "Resta in uso la libreria gia' presente." -ForegroundColor Yellow }
+            else { Write-Host "I sensori non verranno inviati finche' -Installa non riesce a scaricarla." -ForegroundColor Yellow }
+        }
+        if (-not (PawnIO-Installato)) {
+            Write-Host "Driver PawnIO non installato: senza, CPU e scheda madre non si leggono." -ForegroundColor Yellow
+            Write-Host "Installalo con:  winget install namazso.PawnIO   (poi rilancia -Mostra)" -ForegroundColor Yellow
+        }
+    }
     $azione = New-ScheduledTaskAction -Execute 'powershell.exe' `
         -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$destinazione`""
+    # Con i sensori ogni 5 minuti (i dischi restano ogni ora), senza ogni ora.
+    $intervallo = if ($InviaSensori) { New-TimeSpan -Minutes 5 } else { New-TimeSpan -Hours 1 }
     $ogniOra = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) `
-        -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Days 3650)
+        -RepetitionInterval $intervallo -RepetitionDuration (New-TimeSpan -Days 3650)
     $avvio = New-ScheduledTaskTrigger -AtStartup
     $utente = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
     $impostazioni = New-ScheduledTaskSettingsSet -StartWhenAvailable `
         -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
     Register-ScheduledTask -TaskName $NomeAttivita -Action $azione `
         -Trigger @($ogniOra, $avvio) -Principal $utente -Settings $impostazioni -Force | Out-Null
-    Write-Host "Attivita' pianificata '$NomeAttivita' creata: invio ogni ora e all'avvio."
+    if ($InviaSensori) {
+        Write-Host "Attivita' pianificata '$NomeAttivita' creata: sensori ogni 5 minuti, dischi ogni ora, e all'avvio."
+    } else {
+        Write-Host "Attivita' pianificata '$NomeAttivita' creata: invio ogni ora e all'avvio."
+    }
     Write-Host "Script installato in $destinazione"
 }
 
 # ---------------------------------------------------------------- lettura e invio
-try {
-    $dischi = Leggi-Dischi
-} catch {
-    Scrivi-Log "ERRORE lettura dischi: $($_.Exception.Message)"
-    Write-Host "Lettura dei dischi non riuscita: $($_.Exception.Message)" -ForegroundColor Red
-    exit 1
+# I dischi cambiano lentamente: con l'invio ogni 5 minuti dei sensori
+# li si rilegge solo una volta all'ora.
+$fareDischi = $true
+if ($InviaSensori -and -not $Installa -and -not $Mostra) {
+    try {
+        $ultimo = (Get-Item $FileDischi -ErrorAction Stop).LastWriteTime
+        if (((Get-Date) - $ultimo).TotalMinutes -lt 55) { $fareDischi = $false }
+    } catch { }
+}
+
+$dischi = $null
+if ($fareDischi) {
+    try {
+        $dischi = Leggi-Dischi
+    } catch {
+        Scrivi-Log "ERRORE lettura dischi: $($_.Exception.Message)"
+        Write-Host "Lettura dei dischi non riuscita: $($_.Exception.Message)" -ForegroundColor Red
+        if (-not $InviaSensori) { exit 1 }
+    }
+}
+
+$sensori = $null
+$erroreSensori = $null
+$inventario = $null
+if ($InviaSensori) {
+    try { $sensori = Leggi-Sensori } catch { $erroreSensori = $_.Exception.Message }
+    if ($fareDischi) {
+        try { $inventario = Leggi-Inventario } catch { }
+    }
 }
 
 if ($Mostra) {
-    $dischi | Select-Object modello, seriale, bus, tipo, salute,
-        @{n='usura NVMe %'; e={ if ($_.nvme) { $_.nvme.percentuale_usata } }},
-        @{n='ore'; e={ if ($_.nvme) { $_.nvme.ore_accensione } else { $_.ore_accensione } }},
-        @{n='anni'; e={ $o = if ($_.nvme) { $_.nvme.ore_accensione } else { $_.ore_accensione }; if ($o) { [math]::Round($o / 8760, 1) } }},
-        @{n='attributi SMART'; e={ if ($_.ata) { $_.ata.Count } }} |
-        Format-Table -AutoSize
-    Write-Host "$($dischi.Count) dischi letti (nessun invio: modalita' -Mostra)."
+    if ($null -ne $dischi) {
+        $dischi | Select-Object modello, seriale, bus, tipo, salute,
+            @{n='usura NVMe %'; e={ if ($_.nvme) { $_.nvme.percentuale_usata } }},
+            @{n='ore'; e={ if ($_.nvme) { $_.nvme.ore_accensione } else { $_.ore_accensione } }},
+            @{n='anni'; e={ $o = if ($_.nvme) { $_.nvme.ore_accensione } else { $_.ore_accensione }; if ($o) { [math]::Round($o / 8760, 1) } }},
+            @{n='attributi SMART'; e={ if ($_.ata) { $_.ata.Count } }} |
+            Format-Table -AutoSize
+        Write-Host "$($dischi.Count) dischi letti."
+    }
+    if ($InviaSensori) {
+        if ($sensori) {
+            $sensori.temperature | Select-Object gruppo, componente, nome, @{n='gradi C'; e={ $_.valore }} | Format-Table -AutoSize
+            $sensori.ventole | Select-Object gruppo, componente, nome, giri | Format-Table -AutoSize
+            Write-Host ("Carico CPU: {0} %   Memoria: {1} %   Potenza CPU: {2} W" -f $sensori.carico_cpu, $sensori.memoria, $sensori.potenza_cpu)
+            Write-Host "$($sensori.fonte); driver PawnIO: $(if ($sensori.pawnio) { $sensori.pawnio } else { 'NON installato' })"
+            if ($inventario) {
+                Write-Host ("Sistema: {0} {1} - {2} - BIOS {3}" -f $inventario.produttore, $inventario.modello, $inventario.so, $inventario.bios)
+                $inventario.processori | ForEach-Object { Write-Host ("CPU: {0} ({1} core, {2} thread)" -f $_.modello, $_.core, $_.thread) }
+                Write-Host ("Memoria: {0} moduli, {1} GB" -f @($inventario.memoria).Count, [math]::Round((@($inventario.memoria) | Measure-Object mib -Sum).Sum / 1024))
+            }
+            if (-not $sensori.pawnio) {
+                Write-Host "Senza PawnIO mancano CPU e scheda madre: installalo con  winget install namazso.PawnIO" -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "Sensori non letti: $erroreSensori" -ForegroundColor Yellow
+        }
+    }
+    Write-Host "(nessun invio: modalita' -Mostra)"
     return
 }
 
-$corpo = @{
+$pacchetto = [ordered]@{
     host     = $env:COMPUTERNAME
-    versione = 2
-    dischi   = @($dischi)
-} | ConvertTo-Json -Depth 6
+    versione = 3
+}
+if ($null -ne $dischi) { $pacchetto.dischi = @($dischi) }
+if ($sensori) { $pacchetto.sensori = $sensori }
+if ($inventario) { $pacchetto.inventario = $inventario }
+if ($erroreSensori) { $pacchetto.errore_sensori = "$erroreSensori" }
+$corpo = $pacchetto | ConvertTo-Json -Depth 6
 
 try {
     $risposta = Invoke-RestMethod -Uri "$Pannello/api/agent/drives" -Method Post `
         -Body ([Text.Encoding]::UTF8.GetBytes($corpo)) `
         -ContentType 'application/json; charset=utf-8' `
         -Headers @{ Authorization = "Bearer $Chiave" } -TimeoutSec 60 -UseBasicParsing
-    $messaggio = "OK: $($risposta.salvati) dischi inviati a $Pannello"
+    $parti = @()
+    if ($null -ne $dischi) {
+        $parti += "$($risposta.salvati) dischi"
+        try { New-Item -ItemType Directory -Force -Path $Cartella | Out-Null; Get-Date | Out-File -FilePath $FileDischi -Encoding ASCII } catch { }
+    }
+    if ($sensori) { $parti += "$($risposta.sensori) sensori" }
+    if ($erroreSensori) { $parti += "sensori non letti ($erroreSensori)" }
+    $messaggio = "OK: $($parti -join ', ') inviati a $Pannello"
     Scrivi-Log $messaggio
     Write-Host $messaggio
 } catch {

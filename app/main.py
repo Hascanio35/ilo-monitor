@@ -1337,6 +1337,8 @@ def power_action(server_id: int, payload: PowerIn):
             riga = one(cur, "SELECT * FROM servers WHERE id=%s", (server_id,))
             if riga and riga.get("ilo_protocol") == "ribcl":
                 return _power_ribcl(cur, riga, payload.action.lower(), action)
+            if riga and riga.get("ilo_protocol") == "bmc":
+                return _power_bmc(cur, riga, payload.action.lower())
             row, rf = _open_session(cur, server_id)
             try:
                 rf.post(
@@ -1379,6 +1381,24 @@ def _power_ribcl(cur, riga, azione, nome_azione):
     }
 
 
+def _power_bmc(cur, riga, azione):
+    from app import bmc_collector
+    try:
+        stato, comando = bmc_collector.accensione(riga, azione)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"La scheda ha rifiutato l'azione: {exc}")
+    if stato:
+        cur.execute("UPDATE servers SET power_state=%s WHERE id=%s",
+                    (stato, riga["id"]))
+    return {
+        "ok": True,
+        "message": f"Comando {comando} inviato a {riga['name']}",
+        "power_state": stato,
+    }
+
+
 @app.post("/api/servers/{server_id}/led")
 def toggle_led(server_id: int):
     """Accende o spegne il LED di identificazione (UID)."""
@@ -1392,6 +1412,16 @@ def toggle_led(server_id: int):
                     target = ribcl_collector.led_uid(riga)
                 except Exception as exc:
                     raise HTTPException(502, f"iLO ha rifiutato l'azione: {exc}")
+                cur.execute("UPDATE servers SET indicator_led=%s WHERE id=%s",
+                            (target, server_id))
+                return {"ok": True, "indicator_led": target}
+            if riga and riga.get("ilo_protocol") == "bmc":
+                from app import bmc_collector
+                try:
+                    target = bmc_collector.led(riga)
+                except Exception as exc:
+                    raise HTTPException(
+                        502, f"La scheda ha rifiutato l'azione: {exc}")
                 cur.execute("UPDATE servers SET indicator_led=%s WHERE id=%s",
                             (target, server_id))
                 return {"ok": True, "indicator_led": target}
@@ -1437,8 +1467,8 @@ def agent_script(server_id: int, request: Request):
     con = db()
     try:
         with con.cursor() as cur:
-            row = one(cur, "SELECT id, name FROM servers WHERE id=%s",
-                      (server_id,))
+            row = one(cur, "SELECT id, name, ilo_protocol FROM servers "
+                      "WHERE id=%s", (server_id,))
             if not row:
                 raise HTTPException(404, "Server non trovato")
             chiave = secrets.token_urlsafe(32)
@@ -1464,6 +1494,10 @@ def agent_script(server_id: int, request: Request):
                   .replace("{{TOKEN}}", chiave)
                   .replace("{{NOME}}", row["name"].replace("'", ""))
                   .replace("{{FILE}}", nome_file)
+                  # I sensori li chiediamo solo dove nessun altro li legge:
+                  # le schede di gestione generiche (gli iLO li leggono gia').
+                  .replace("{{SENSORI}}",
+                           "1" if row.get("ilo_protocol") == "bmc" else "0")
                   .replace("{{DATA}}", datetime.now().strftime("%d/%m/%Y %H:%M")))
     # BOM UTF-8 e fine riga Windows: PowerShell 5 legge cosi' senza
     # sorprese anche gli accenti nei nomi dei server.
@@ -1655,6 +1689,193 @@ def _posizione(testo, numero):
     return f"Disco {numero}" if numero not in (None, "") else "Disco"
 
 
+# Soglie per i sensori letti da Windows, che non ne riportano:
+# (attenzione, critica) per famiglia di componente.
+SOGLIE_SENSORI = {
+    "Cpu": (85, 100),
+    "Motherboard": (70, 85),
+    "SuperIO": (70, 85),
+    "Memory": (70, 85),
+    "GpuNvidia": (85, 95),
+    "GpuAmd": (85, 95),
+    "GpuIntel": (85, 95),
+}
+NOMI_GRUPPI = {
+    "Cpu": "CPU", "Motherboard": "Scheda madre", "SuperIO": "Scheda madre",
+    "Memory": "Memoria", "GpuNvidia": "GPU", "GpuAmd": "GPU",
+    "GpuIntel": "GPU", "Psu": "Alimentatore",
+}
+
+
+def _salva_sensori(cur, server_id, sensori, adesso):
+    """Temperature, ventole e carico inviati dallo script Windows
+    (LibreHardwareMonitor). Restituisce quanti sensori ha salvato."""
+    salvati = 0
+    temperature = sensori.get("temperature") or []
+    if isinstance(temperature, dict):
+        temperature = [temperature]
+    visti = set()
+    n = 0
+    for t in temperature[:60]:
+        if not isinstance(t, dict):
+            continue
+        valore = _decimale(t.get("valore"))
+        if valore is None or not (-40 < valore < 150):
+            continue
+        gruppo = str(t.get("gruppo") or "")
+        nome = str(t.get("nome") or "").strip() or "Sensore"
+        # LibreHardwareMonitor espone come temperature anche le soglie
+        # scritte nei moduli di memoria ("Thermal Sensor High Limit"):
+        # non sono letture.
+        if re.search(r"limit|threshold|resolution", nome, re.I):
+            continue
+        etichetta = f"{NOMI_GRUPPI.get(gruppo, gruppo or 'Sistema')} {nome}"
+        if nome.lower().startswith(NOMI_GRUPPI.get(gruppo, "").lower() + " ") \
+                or (gruppo == "Cpu" and nome.upper().startswith("CPU")):
+            etichetta = nome
+        if etichetta in visti:
+            continue
+        visti.add(etichetta)
+        n += 1
+        attenzione, critica = SOGLIE_SENSORI.get(gruppo, (None, None))
+        if "cpu" in nome.lower():
+            # Anche la sonda della scheda madre vicino al processore
+            # segue i limiti del processore.
+            attenzione, critica = SOGLIE_SENSORI["Cpu"]
+        cur.execute(
+            """
+            INSERT INTO thermal_sensors
+            (server_id, collected_at, sensor_name, sensor_number,
+             temperature_c, health, state, warning_threshold,
+             critical_threshold, fatal_threshold)
+            VALUES (%s,%s,%s,%s,%s,%s,'Enabled',%s,%s,NULL)
+            """,
+            (server_id, adesso, f"{n:02d}-{etichetta}"[:255],
+             str(t.get("componente") or "")[:100] or None, valore,
+             "Critical" if critica and valore >= critica
+             else "Warning" if attenzione and valore >= attenzione else "OK",
+             attenzione, critica),
+        )
+        salvati += 1
+
+    ventole = sensori.get("ventole") or []
+    if isinstance(ventole, dict):
+        ventole = [ventole]
+    for n, v in enumerate([x for x in ventole if isinstance(x, dict)][:30],
+                          start=1):
+        giri = _intero(v.get("giri"))
+        if giri is None or giri <= 0 or giri > 30000:
+            continue
+        gruppo = str(v.get("gruppo") or "")
+        nome = str(v.get("nome") or "").strip() or f"Ventola {n}"
+        if gruppo.startswith("Gpu"):
+            nome = f"GPU {nome}"
+        cur.execute(
+            """
+            INSERT INTO fans
+            (server_id, collected_at, fan_id, fan_name, status, health,
+             state, speed_percent, speed_rpm)
+            VALUES (%s,%s,%s,%s,NULL,'OK','Enabled',NULL,%s)
+            """,
+            (server_id, adesso, f"os-{n}", nome[:255], giri),
+        )
+        salvati += 1
+
+    carico = _decimale(sensori.get("carico_cpu"))
+    memoria = _decimale(sensori.get("memoria"))
+    potenza = _decimale(sensori.get("potenza_cpu"))
+    if carico is not None or memoria is not None:
+        cur.execute(
+            """
+            INSERT INTO system_metrics
+            (server_id, collected_at, cpu_utilization, cpu_power_watts,
+             memory_utilization, memory_power_watts, io_bus_utilization,
+             memory_bus_utilization, ambient_temperature)
+            VALUES (%s,%s,%s,%s,%s,NULL,NULL,NULL,NULL)
+            """,
+            (server_id, adesso, carico, potenza, memoria),
+        )
+    if potenza is not None and potenza > 0:
+        cur.execute(
+            "INSERT INTO power_metrics (server_id, collected_at, cpu_watts) "
+            "VALUES (%s,%s,%s)",
+            (server_id, adesso, potenza),
+        )
+    return salvati
+
+
+def _salva_inventario(cur, server_id, inv, adesso):
+    """Inventario letto da Windows, per i server la cui scheda di
+    gestione non lo conosce (BMC generici)."""
+    def testo(v, n=255):
+        v = str(v or "").strip()
+        return v[:n] or None
+
+    processori = [p for p in (inv.get("processori") or []) if isinstance(p, dict)] \
+        if not isinstance(inv.get("processori"), dict) else [inv["processori"]]
+    memoria = [m for m in (inv.get("memoria") or []) if isinstance(m, dict)] \
+        if not isinstance(inv.get("memoria"), dict) else [inv["memoria"]]
+    totale_mib = sum(_intero(m.get("mib")) or 0 for m in memoria)
+    avvio = None
+    try:
+        avvio = datetime.fromisoformat(str(inv.get("avvio") or "")[:19])
+    except ValueError:
+        pass
+    cur.execute(
+        """
+        UPDATE servers SET
+            hostname=COALESCE(%s, hostname),
+            manufacturer=COALESCE(%s, manufacturer),
+            model=COALESCE(%s, model),
+            serial_number=COALESCE(%s, serial_number),
+            bios_version=COALESCE(%s, bios_version),
+            host_os=COALESCE(%s, host_os),
+            last_boot_at=COALESCE(%s, last_boot_at),
+            processor_summary=%s, processor_count=%s, core_count=%s,
+            memory_total_gib=%s
+        WHERE id=%s
+        """,
+        (
+            testo(inv.get("hostname")), testo(inv.get("produttore"), 100),
+            testo(inv.get("modello")), testo(inv.get("seriale"), 100),
+            testo(inv.get("bios"), 100), testo(inv.get("so")), avvio,
+            testo(processori[0].get("modello")) if processori else None,
+            len(processori) or None,
+            sum(_intero(p.get("core")) or 0 for p in processori) or None,
+            round(totale_mib / 1024, 2) if totale_mib else None,
+            server_id,
+        ),
+    )
+    for n, p in enumerate(processori[:8], start=1):
+        cur.execute(
+            """
+            INSERT INTO processors
+            (server_id, collected_at, processor_id, socket, model,
+             manufacturer, max_speed_mhz, total_cores, total_threads,
+             health, state)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL,'Enabled')
+            """,
+            (server_id, adesso, f"cpu-{n}", testo(p.get("socket"), 100),
+             testo(p.get("modello")), testo(p.get("produttore"), 100),
+             _intero(p.get("mhz")), _intero(p.get("core")),
+             _intero(p.get("thread"))),
+        )
+    for n, m in enumerate(memoria[:64], start=1):
+        cur.execute(
+            """
+            INSERT INTO memory_modules
+            (server_id, collected_at, dimm_id, device_locator, capacity_mib,
+             speed_mhz, memory_type, manufacturer, part_number, rank_count,
+             health, state)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL,NULL,'Enabled')
+            """,
+            (server_id, adesso, f"dimm-{n}", testo(m.get("posizione"), 150),
+             _intero(m.get("mib")), _intero(m.get("mhz")),
+             testo(m.get("tipo"), 50), testo(m.get("produttore"), 100),
+             testo(m.get("codice"), 150)),
+        )
+
+
 @app.post("/api/agent/drives")
 async def agent_drives(request: Request):
     autorizzazione = request.headers.get("authorization") or ""
@@ -1679,7 +1900,8 @@ async def agent_drives(request: Request):
         with con.cursor() as cur:
             row = one(
                 cur,
-                "SELECT id, name FROM servers WHERE agent_token_hash=%s",
+                "SELECT id, name, ilo_protocol FROM servers "
+                "WHERE agent_token_hash=%s",
                 (_impronta(chiave),),
             )
             if not row:
@@ -1734,11 +1956,29 @@ async def agent_drives(request: Request):
                     ),
                 )
                 salvati += 1
+            n_sensori = 0
+            nota = None
+            sensori = dati.get("sensori")
+            if row.get("ilo_protocol") == "bmc":
+                if isinstance(sensori, dict):
+                    n_sensori = _salva_sensori(cur, server_id, sensori, adesso)
+                    if not sensori.get("pawnio"):
+                        nota = ("driver PawnIO non installato: CPU e scheda "
+                                "madre non si leggono")
+                    elif not n_sensori:
+                        nota = "nessun sensore letto"
+                elif dati.get("errore_sensori"):
+                    nota = str(dati.get("errore_sensori"))[:250]
+                if isinstance(dati.get("inventario"), dict):
+                    _salva_inventario(cur, server_id, dati["inventario"], adesso)
             cur.execute(
-                "UPDATE servers SET agent_last_at=%s, agent_host=%s WHERE id=%s",
-                (adesso, str(dati.get("host") or "")[:255] or None, server_id),
+                "UPDATE servers SET agent_last_at=%s, agent_host=%s, "
+                "agent_sensors_note=%s WHERE id=%s",
+                (adesso, str(dati.get("host") or "")[:255] or None,
+                 nota, server_id),
             )
-            return {"ok": True, "server": row["name"], "salvati": salvati}
+            return {"ok": True, "server": row["name"], "salvati": salvati,
+                    "sensori": n_sensori}
     finally:
         con.close()
 

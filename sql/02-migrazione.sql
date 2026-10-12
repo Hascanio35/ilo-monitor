@@ -104,7 +104,8 @@ CALL add_column_if_missing('servers', 'ams_status',
     '`ams_status` VARCHAR(30) NULL');
 CALL add_column_if_missing('servers', 'host_os',
     '`host_os` VARCHAR(255) NULL');
--- NULL o 'redfish' per iLO 4/5/6, 'ribcl' per iLO 2 e 3.
+-- NULL o 'redfish' per iLO 4/5/6, 'ribcl' per iLO 2 e 3, 'bmc' per
+-- schede di gestione Redfish di altri produttori (es. ASUS ASMB10).
 CALL add_column_if_missing('servers', 'ilo_protocol',
     '`ilo_protocol` VARCHAR(10) NULL');
 -- Dischi inviati dallo script per Windows (sorgente 'os'), con i
@@ -123,6 +124,13 @@ CALL add_column_if_missing('servers', 'agent_last_at',
     '`agent_last_at` DATETIME NULL');
 CALL add_column_if_missing('servers', 'agent_host',
     '`agent_host` VARCHAR(255) NULL');
+-- Ventole che riportano i giri (schede generiche e script Windows)
+-- invece della percentuale degli iLO.
+CALL add_column_if_missing('fans', 'speed_rpm',
+    '`speed_rpm` INT NULL');
+-- Esito della lettura dei sensori da parte dello script Windows.
+CALL add_column_if_missing('servers', 'agent_sensors_note',
+    '`agent_sensors_note` VARCHAR(255) NULL');
 
 DROP PROCEDURE IF EXISTS add_column_if_missing;
 

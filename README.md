@@ -6,9 +6,13 @@ e log eventi da più iLO, li conserva in un database e li mostra in
 un'unica interfaccia web, con avvisi via email.
 
 Parla **Redfish** con gli iLO 4, 5 e 6 e **RIBCL** con i vecchi iLO 2
-e 3, che Redfish non lo conoscono. Uno **script per Windows**, generato
-dal pannello, aggiunge i dischi che l'iLO non vede (per esempio gli
-NVMe su scheda PCIe) con i dati SMART letti direttamente dal disco.
+e 3, che Redfish non lo conoscono. Gestisce anche le **schede di
+gestione Redfish di altri produttori** (per esempio ASUS ASMB10-iKVM,
+firmware AMI) per accensione, spegnimento, riavvio e registro eventi.
+Uno **script per Windows**, generato dal pannello, aggiunge i dischi che
+l'iLO non vede (per esempio gli NVMe su scheda PCIe) con i dati SMART
+letti direttamente dal disco e, dove la scheda di gestione non li
+legge, temperature, ventole e inventario del sistema.
 
 Nato per non dover aprire sette interfacce iLO diverse per sapere come
 stanno sette server.
@@ -47,6 +51,10 @@ Le schermate usano server e dati di esempio.
   consumi, dischi (modello e stato), processori, memoria, registri
   eventi, accensione e LED. L'usura dei dischi e gli indirizzi IP
   del sistema non sono disponibili su queste generazioni.
+- **Altre schede di gestione (BMC).** Se all'indirizzo non risponde un
+  iLO, il pannello prova il Redfish standard: stato, accensione e
+  riavvio, LED, registri eventi e, se la scheda li legge, sensori.
+  Vedi [Schede di gestione di altri produttori](#schede-di-gestione-di-altri-produttori).
 - **Inventario e stato.** Processori, moduli di memoria, dischi
   fisici e volumi, controller, interfacce di rete, alimentatori,
   sensori termici, ventole, consumi.
@@ -160,6 +168,39 @@ Su queste generazioni non sono disponibili l'usura dei dischi, i loro
 numeri di serie e gli indirizzi IP del sistema operativo; i consumi
 dipendono dagli alimentatori.
 
+## Schede di gestione di altri produttori
+
+Si aggiungono come gli iLO, con indirizzo e credenziali della scheda.
+Se non risponde un iLO, il pannello prova il Redfish standard seguendo
+le collezioni (`Systems`, `Managers`, `Chassis`) invece dei percorsi
+HPE, e se trova un sistema registra il server come "BMC". Provato con
+ASUS ASMB10-iKVM (firmware AMI MegaRAC).
+
+Cosa si ottiene:
+
+- accensione, spegnimento ordinato e forzato, riavvio ordinato e
+  forzato, con i comandi che la scheda dichiara di accettare;
+- LED di identificazione, se la scheda ne ha uno;
+- registri eventi (esclusi quelli degli accessi);
+- temperature, ventole e consumi, se la scheda li legge;
+- il pulsante **Apri BMC**, che porta alla pagina della scheda e al
+  suo KVM.
+
+Una scheda montata su una scheda madre che non supporta (per esempio
+l'ASMB10 su una scheda madre da PC) non legge nessun sensore: li
+riporta tutti come assenti e scrive nel registro falsi guasti agli
+alimentatori e soglie di tensione superate. In quel caso il pannello
+scarta gli eventi dei sensori e tiene quelli di sistema (accensioni,
+spegnimenti, mancanze di corrente); temperature, ventole e inventario
+possono arrivare dallo script per Windows.
+
+Per vedere cosa espone una scheda c'e' una diagnostica che salva
+l'albero Redfish su file (senza password, account e certificati):
+
+```bash
+python3 -m app.redfish_collector --dump <id del server>
+```
+
 ## Script per Windows: dischi e SMART
 
 L'iLO non vede tutto: gli iLO 2 non conoscono gli NVMe su scheda
@@ -214,6 +255,37 @@ nuovo lo script se ne crea una nuova e quella vecchia smette di
 funzionare. Il server Windows deve raggiungere il pannello
 all'indirizzo usato dal browser per scaricarlo.
 
+### Sensori e inventario (server con scheda di gestione generica)
+
+Per i server registrati come "BMC" lo script scaricato dal pannello fa
+di piu':
+
+- **ogni 5 minuti** invia temperature di CPU, scheda madre, memoria e
+  scheda video, giri delle ventole, carico di CPU e memoria e potenza
+  della CPU;
+- **ogni ora**, con i dischi, invia l'inventario: modello della scheda
+  madre, numero di serie, BIOS, sistema operativo, ultimo avvio,
+  processori e moduli di memoria.
+
+I sensori si leggono con la libreria di
+[LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor):
+`-Installa` la scarica da sola da nuget.org nella versione per .NET
+Framework (quella dei pacchetti del programma e' per .NET 10 e il
+PowerShell di Windows non la puo' usare) e la mette in
+`C:\ProgramData\iLO-Monitor\lhm-<data>`. Per CPU e scheda madre serve
+anche il driver PawnIO:
+
+```powershell
+winget install namazso.PawnIO
+```
+
+Con `-Mostra` si vede cosa legge, compreso lo stato di PawnIO. Le soglie
+di avviso sono fisse per famiglia (CPU 85/100 °C, scheda madre e
+memoria 70/85 °C, scheda video 85/95 °C); le soglie che i moduli di
+memoria espongono come se fossero temperature vengono scartate. Sulle
+schede madri che LibreHardwareMonitor non conosce i sensori della
+scheda madre hanno nomi generici ("Temperature #1", "Fan #2").
+
 ## Configurazione
 
 Tutto si imposta dall'interfaccia, in Impostazioni e Avvisi email:
@@ -253,7 +325,9 @@ all'indirizzo da cui è stato scaricato.
 - iLO raggiungibile via HTTPS dalla macchina che esegue il collector
   (iLO 2: firmware 2.x, consigliato l'ultimo, 2.33)
 - Per lo script dei dischi: Windows Server 2012 o successivo
-  (2016 o successivo per lo SMART degli NVMe)
+  (2016 o successivo per lo SMART degli NVMe; per i sensori .NET
+  Framework 4.7.2 o successivo, il driver PawnIO e accesso a nuget.org
+  durante l'installazione)
 - Licenza iLO Advanced per la console remota (il monitoraggio
   funziona anche senza)
 

@@ -103,7 +103,7 @@ main{padding:18px 14px 40px}
 .infotxt{color:var(--blue)}
 
 /* ---------- layout ---------- */
-.workspace{display:grid;grid-template-columns:minmax(560px,34%) minmax(0,1fr);
+.workspace{display:grid;grid-template-columns:minmax(500px,31%) minmax(0,1fr);
  gap:14px;align-items:start}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:9px;overflow:hidden}
 .panelHead{min-height:53px;border-bottom:1px solid var(--line);padding:8px 14px;display:flex;
@@ -122,12 +122,16 @@ main{padding:18px 14px 40px}
 .serverList .dataTable{table-layout:fixed}
 .serverList .scrollY{overflow-x:hidden}
 .serverList th,.serverList td{padding:10px 8px}
-.serverList th:nth-child(1){width:27%}.serverList th:nth-child(2){width:19%}
-.serverList th:nth-child(3){width:15%}.serverList th:nth-child(4){width:10%}
-.serverList th:nth-child(5){width:11%}.serverList th:nth-child(6){width:18%}
+/* Colonne a larghezza fissa, il nome prende il resto: niente spazio
+   sprecato fra le colonne e i pulsanti staccati dal bordo destro. */
+.serverList th:nth-child(2){width:100px}
+.serverList th:nth-child(3){width:78px}.serverList th:nth-child(4){width:48px}
+.serverList th:nth-child(5){width:56px}.serverList th:nth-child(6){width:108px}
+.serverList th:nth-child(6),.serverList td:nth-child(6){padding-right:14px}
+.serverList th:first-child,.serverList td:first-child{padding-left:14px}
 .serverList td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .serverList td:nth-child(4),.serverList td:nth-child(5){text-align:right}
-.serverList th:nth-child(4),.serverList th:nth-child(5){text-align:right}
+.serverList th:nth-child(4),.serverList th:nth-child(5),.serverList th:nth-child(6){text-align:right}
 .rowActions{text-align:right;overflow:visible!important}
 .iconBtn svg,.srvCardActions svg,.action svg,.refresh svg{display:inline-block;vertical-align:-2px}
 .refresh svg{font-size:15px;vertical-align:-3px}
@@ -404,7 +408,7 @@ input.field::placeholder{color:#6f8598}
 @media(prefers-reduced-motion:reduce){.spin{animation:none}}
 
 @media(max-width:1250px){
- .workspace{grid-template-columns:minmax(440px,40%) minmax(0,1fr)}
+ .workspace{grid-template-columns:minmax(470px,38%) minmax(0,1fr)}
  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
  .detailGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
@@ -625,6 +629,17 @@ function fmt(v, suffix){
   const rounded = Math.round(x * 10) / 10;
   return rounded + (suffix || "");
 }
+// Gli iLO danno la velocita' delle ventole in percentuale; le schede
+// generiche e lo script Windows in giri al minuto.
+function velVentola(x){
+  const p = num(x.speed_percent);
+  if (p !== null) return {p, testo: fmtInt(p, " %"), corto: fmtInt(p, "%"),
+    c: p >= 80 ? "bad" : p >= 60 ? "warn" : ""};
+  const r = num(x.speed_rpm);
+  if (r !== null) return {p: Math.min(100, r / 30), testo: fmtInt(r, " rpm"),
+    corto: fmtInt(r, ""), c: ""};
+  return {p: 0, testo: "—", corto: "—", c: ""};
+}
 function fmtInt(v, suffix){
   const x = num(v);
   return x === null ? "—" : Math.round(x) + (suffix || "");
@@ -694,6 +709,9 @@ function consoleUrl(server){
   // Gli iLO 2 e 3 non hanno la console HTML5: si apre la loro pagina,
   // da cui parte la console Java o .NET.
   if (server.ilo_protocol === "ribcl") return "https://" + server.ilo_ip + "/";
+  // Le schede di gestione di altri produttori (BMC): la loro pagina,
+  // da cui si apre il KVM.
+  if (server.ilo_protocol === "bmc") return "https://" + server.ilo_ip + "/";
   return "https://" + server.ilo_ip + "/irc.html";
 }
 function hasConsole(server){
@@ -1384,14 +1402,14 @@ function detailPanel(){
           <div class="detailMeta">${esc(s.model || "—")} <span class="sep">|</span>
             ${esc(iloGen(s))} <span class="sep">|</span>
             SN: ${esc(s.serial_number || "—")} <span class="sep">|</span>
-            IP iLO: ${esc(s.ilo_ip)}</div>
+            IP ${s.ilo_protocol === "bmc" ? "BMC" : "iLO"}: ${esc(s.ilo_ip)}</div>
         </div>
       </div>
       <div class="actions">
         <button class="action" data-act="menu">Azioni ⌄</button>
         <button class="action" data-act="console"${hasConsole(s) ? ""
           : ' disabled title="Richiede licenza iLO Advanced"'}>Console ${IC.play}</button>
-        <button class="action green" data-act="open-ilo">Apri iLO ${IC.ext}</button>
+        <button class="action green" data-act="open-ilo">Apri ${s.ilo_protocol === "bmc" ? "BMC" : "iLO"} ${IC.ext}</button>
         <div class="menu hidden" id="actionMenu">
           <button data-act="collect-now">Aggiorna dati adesso</button>
           <button data-act="toggle-led">Accendi/spegni LED UID</button>
@@ -1403,7 +1421,8 @@ function detailPanel(){
           <button data-act="power-force_off">Spegnimento forzato</button>
           <hr>
           <button data-act="edit-server">Modifica server…</button>
-          <button data-act="agent-script">Script dischi per Windows…</button>
+          <button data-act="agent-script">${s.ilo_protocol === "bmc"
+            ? "Script dischi e sensori per Windows…" : "Script dischi per Windows…"}</button>
           <button class="danger" data-act="delete-server">Rimuovi server…</button>
         </div>
       </div>
@@ -1455,6 +1474,7 @@ function overviewTab(d){
       <div class="miniValue">${up ? up.days + " giorni" : "—"}</div>
       <div class="miniSub">${up ? "dal " + up.since.toLocaleDateString("it-IT") + " "
         + up.since.toLocaleTimeString("it-IT", {hour:"2-digit", minute:"2-digit"})
+        : s.ilo_protocol === "bmc" ? "ultimo avvio non ancora riportato"
         : "ultimo avvio non riportato da iLO"}</div></div>
     <div class="mini"><div class="miniTitle">Consumo</div>
       <div class="miniValue">${fmtInt(p.consumed_watts, " W")}</div>
@@ -1486,11 +1506,10 @@ function overviewTab(d){
       <div class="boxHead">Ventole
         <button class="boxLink" data-tab-link="fans">Vedi tutte →</button></div>
       <div class="boxBody">${presenti(d.fans).length ? presenti(d.fans).slice(0, 6).map((x) => {
-        const v = num(x.speed_percent) || 0;
-        const c = v >= 80 ? "bad" : v >= 60 ? "warn" : "";
-        return `<div class="line"><span>${esc(x.fan_name || x.fan_id)}</span>
+        const {p: v, testo, c} = velVentola(x);
+        return `<div class="line"><span title="${esc(x.fan_name || x.fan_id)}">${esc(x.fan_name || x.fan_id)}</span>
           <span class="val"><b class="${c === "bad" ? "redtxt" : c === "warn" ? "warntxt" : ""}">
-          ${fmtInt(v, " %")}</b>
+          ${testo}</b>
           <span class="bar"><i class="${c}" style="width:${Math.min(100, v)}%"></i></span>
           </span></div>`;
       }).join("") : emptyBox("Nessuna ventola rilevata.")}</div>
@@ -1534,8 +1553,13 @@ function overviewTab(d){
         <tr><td>Socket popolati</td><td>${s.processor_count ?? "—"}${cores ? " · " + cores : ""}</td></tr>
         <tr><td>Memoria totale</td><td>${fmtInt(s.memory_total_gib, " GB")}</td></tr>
         <tr><td>Utilizzo CPU</td><td>${fmt(m.cpu_utilization, " %")}</td></tr>
-        <tr><td>Bus memoria</td><td>${fmt(m.memory_bus_utilization, " %")}</td></tr>
-        <tr><td>Bus I/O</td><td>${fmt(m.io_bus_utilization, " %")}</td></tr>
+        ${s.ilo_protocol === "bmc"
+          // Dalle schede generiche i dati arrivano da Windows: niente
+          // misure dei bus, ma l'occupazione della memoria si'.
+          ? `<tr><td>Utilizzo memoria</td><td>${fmt(m.memory_utilization, " %")}</td></tr>
+             <tr><td>Potenza CPU</td><td>${fmt(m.cpu_power_watts, " W")}</td></tr>`
+          : `<tr><td>Bus memoria</td><td>${fmt(m.memory_bus_utilization, " %")}</td></tr>
+             <tr><td>Bus I/O</td><td>${fmt(m.io_bus_utilization, " %")}</td></tr>`}
       </table></div>
     </div>
 
@@ -1544,9 +1568,12 @@ function overviewTab(d){
       <div class="boxBody"><table class="infoTable">
         <tr><td>Modello</td><td>${esc(s.model || "—")}</td></tr>
         <tr><td>Seriale</td><td>${esc(s.serial_number || "—")}</td></tr>
-        <tr><td>Versione iLO</td><td>${esc(s.ilo_firmware || s.ilo_version || "—")}</td></tr>
+        ${s.ilo_protocol === "bmc"
+          ? `<tr><td>Scheda di gestione</td><td>${esc([s.ilo_version, s.ilo_firmware].filter(Boolean).join(" ") || "—")}</td></tr>`
+          : `<tr><td>Versione iLO</td><td>${esc(s.ilo_firmware || s.ilo_version || "—")}</td></tr>`}
         <tr><td>BIOS</td><td>${esc(s.bios_version || "—")}</td></tr>
         <tr><td>Hostname</td><td>${esc(s.hostname || "—")}</td></tr>
+        ${s.host_os ? `<tr><td>Sistema operativo</td><td>${esc(s.host_os)}</td></tr>` : ""}
         <tr><td>Ultima raccolta</td><td>${relative(s.last_collect_at)}</td></tr>
       </table></div>
     </div>
@@ -1647,17 +1674,22 @@ function fansTab(d){
   const fans = presenti(d.fans);
   const vuoti = (d.fans || []).length - fans.length;
   if (!fans.length) return `<div class="box">${emptyBox("Nessuna ventola rilevata.")}</div>`;
-  const avg = fans.reduce((a, x) => a + (num(x.speed_percent) || 0), 0) / fans.length;
+  // Medie e massimi nell'unita' che le ventole riportano: percentuale
+  // sugli iLO, giri al minuto altrove.
+  const inGiri = !fans.some((x) => num(x.speed_percent) !== null)
+    && fans.some((x) => num(x.speed_rpm) !== null);
+  const vel = (x) => num(inGiri ? x.speed_rpm : x.speed_percent) || 0;
+  const unita = inGiri ? " rpm" : " %";
+  const avg = fans.reduce((a, x) => a + vel(x), 0) / fans.length;
   return `<div class="miniGrid">
     <div class="mini"><div class="miniTitle">Ventole</div>
       <div class="miniValue">${fans.length}</div><div class="miniSub">${vuoti
         ? `installate, ${vuoti} alloggiament${vuoti === 1 ? "o" : "i"} vuot${vuoti === 1 ? "o" : "i"}`
         : "installate"}</div></div>
     <div class="mini"><div class="miniTitle">Velocità media</div>
-      <div class="miniValue">${fmtInt(avg, " %")}</div><div class="miniSub">di tutte le ventole</div></div>
+      <div class="miniValue">${fmtInt(avg, unita)}</div><div class="miniSub">di tutte le ventole</div></div>
     <div class="mini"><div class="miniTitle">Velocità massima</div>
-      <div class="miniValue">${fmtInt(Math.max(...fans.map(
-        (x) => num(x.speed_percent) || 0)), " %")}</div>
+      <div class="miniValue">${fmtInt(Math.max(...fans.map(vel)), unita)}</div>
       <div class="miniSub">picco attuale</div></div>
     <div class="mini"><div class="miniTitle">Anomalie</div>
       <div class="miniValue ${fans.some((x) => health(x.health) !== "ok") ? "warntxt" : "oktxt"}">
@@ -1666,12 +1698,11 @@ function fansTab(d){
   </div>
   <div class="box"><div class="boxHead">Velocità ventole</div><div class="boxBody">
     ${fans.map((x) => {
-      const v = num(x.speed_percent) || 0;
-      const c = v >= 80 ? "bad" : v >= 60 ? "warn" : "";
+      const {p: v, testo, c} = velVentola(x);
       return `<div class="line"><span>${esc(x.fan_name || x.fan_id)}
         <span style="color:#7a8fa1">· ${esc(x.state || "")}</span></span>
         <span class="val"><b class="${c === "bad" ? "redtxt" : c === "warn" ? "warntxt" : ""}">
-        ${fmtInt(v, " %")}</b>
+        ${testo}</b>
         <span class="bar"><i class="${c}" style="width:${Math.min(100, v)}%"></i></span></span>
       </div>`;
     }).join("")}</div></div>`;
@@ -2287,12 +2318,13 @@ function thermalPage(data){
         ${serverFans.length ? `<div style="margin-top:12px">
           <div style="font-size:11px;color:var(--muted);margin-bottom:7px">Ventole</div>
           <div class="heatGrid">${serverFans.map((f) => {
-            const v = num(f.speed_percent) || 0;
-            const bg = v >= 80 ? "rgba(255,91,103,.24)" : v >= 60
+            const {c, corto, testo} = velVentola(f);
+            const bg = c === "bad" ? "rgba(255,91,103,.24)" : c === "warn"
               ? "rgba(255,189,61,.22)" : "rgba(25,230,161,.16)";
-            const fg = v >= 80 ? "#ff8a92" : v >= 60 ? "#ffcf72" : "#6ff0c4";
-            return `<div class="heatCell" style="background:${bg};color:${fg}">
-              <small>${esc(f.fan_name || f.fan_id)}</small><b>${fmtInt(v, "%")}</b></div>`;
+            const fg = c === "bad" ? "#ff8a92" : c === "warn" ? "#ffcf72" : "#6ff0c4";
+            return `<div class="heatCell" style="background:${bg};color:${fg}"
+              title="${esc(f.fan_name || f.fan_id)} — ${testo}">
+              <small>${esc(f.fan_name || f.fan_id)}</small><b>${corto}</b></div>`;
           }).join("")}</div></div>` : ""}
       </div></div>`;
   }).join("")}`;
@@ -3478,6 +3510,9 @@ function nomeFileAgente(server){
 
 function openAgentModal(server){
   const file = nomeFileAgente(server);
+  // Sulle schede di gestione generiche lo script invia anche i sensori,
+  // letti con LibreHardwareMonitor: va indicata la sua cartella.
+  const conSensori = server.ilo_protocol === "bmc";
   const comando = `powershell -ExecutionPolicy Bypass -File .\\${file} -Installa`;
   const stato = server.has_agent
     ? (server.agent_last_at
@@ -3485,15 +3520,27 @@ function openAgentModal(server){
             ? " da <b>" + esc(server.agent_host) + "</b>" : ""}.`
         : "Script generato, ma non ha ancora inviato dati.")
     : "Nessuno script installato per questo server.";
+  const notaSensori = conSensori && server.agent_sensors_note
+    ? `<div class="wide formMessage" style="padding:0;color:var(--warn,#ffcf72)">
+        Sensori: ${esc(server.agent_sensors_note)}</div>` : "";
+  const passiSensori = conSensori ? `
+        <div class="wide" style="font-size:12px;line-height:19px;color:#c3d2dd">
+          <b>Temperature e ventole</b> (la scheda di gestione di questo server non le
+          legge): all'installazione lo script scarica da nuget.org la libreria di
+          LibreHardwareMonitor. Serve anche il driver <b>PawnIO</b>, che legge CPU e
+          scheda madre; se non c'è, installalo prima con
+          <code>winget install namazso.PawnIO</code>.
+        </div>` : "";
   $("modalRoot").innerHTML = `
   <div class="modal" id="agentModal">
     <div class="modalCard" style="width:min(620px,96vw)">
       <div class="modalHead">
-        <div><h2>Dischi e SMART da Windows</h2>
+        <div><h2>${conSensori ? "Dischi e sensori da Windows" : "Dischi e SMART da Windows"}</h2>
           <p>Lo script legge da Windows tutti i dischi fisici di ${esc(server.name)},
              anche quelli che l'iLO non vede (per esempio gli NVMe su scheda PCIe),
              con usura, temperatura, ore di accensione ed errori, e li invia
-             al pannello ogni ora.</p></div>
+             al pannello ogni ora.${conSensori ? ` Invia anche temperature,
+             ventole e carico di CPU e memoria, ogni 5 minuti.` : ""}</p></div>
         <button class="modalClose" id="agClose">×</button>
       </div>
       <div class="formGrid">
@@ -3501,12 +3548,13 @@ function openAgentModal(server){
         ${server.has_agent ? `<div class="wide formMessage" style="padding:0">
           Scaricandolo di nuovo si crea una chiave nuova: lo script già
           installato smette di inviare finché non lo sostituisci.</div>` : ""}
+        ${notaSensori}${passiSensori}
         <div class="wide" style="font-size:12px;line-height:19px;color:#c3d2dd">
           <b>1.</b> Scarica lo script e copialo sul server Windows.<br>
           <b>2.</b> Apri PowerShell <b>come amministratore</b> nella cartella
              dove l'hai copiato e lancia:
           <pre class="codice" id="agCmd">${esc(comando)}</pre>
-          Crea l'attività pianificata (ogni ora e all'avvio) e invia subito i dati.
+          Crea l'attività pianificata (${conSensori ? "ogni 5 minuti" : "ogni ora"} e all'avvio) e invia subito i dati.
           Con <code>-Mostra</code> al posto di <code>-Installa</code> vedi cosa legge
           senza inviare nulla.
         </div>

@@ -583,10 +583,21 @@ def identifica(ip, username, password):
             from app import ribcl
         except ImportError:
             import ribcl
-        if not ribcl.e_ilo_ribcl(ip):
+        if ribcl.e_ilo_ribcl(ip):
+            rib = ribcl.Ribcl(ip, username, password)
+            return ribcl.identita(rib), "ribcl"
+        # Non e' un iLO: puo' essere una scheda di gestione Redfish di
+        # altro produttore (per esempio ASUS ASMB10-iKVM, firmware AMI).
+        try:
+            from app import bmc_collector
+        except ImportError:
+            import bmc_collector
+        try:
+            return bmc_collector.identita(ip, username, password), "bmc"
+        except Exception as errore_bmc:
+            if "401" in str(errore_bmc):
+                raise RuntimeError(str(errore_bmc)) from None
             raise errore_redfish
-        rib = ribcl.Ribcl(ip, username, password)
-        return ribcl.identita(rib), "ribcl"
 
 
 # ================================================================
@@ -606,6 +617,10 @@ def collect_server(server, db, verbose=True, full=False):
         except ImportError:
             import ribcl_collector
         return ribcl_collector.collect_server(
+            server, db, verbose=verbose, full=full)
+    if str(server.get("ilo_protocol") or "").lower() == "bmc":
+        from app import bmc_collector
+        return bmc_collector.collect_server(
             server, db, verbose=verbose, full=full)
 
     server_id = server["id"]
@@ -2035,6 +2050,11 @@ def dump_server(server_id, path):
             import ribcl
         return ribcl.prova(server["ilo_ip"], server.get("ilo_user")
                            or "Administrator", password, path)
+
+    if str(server.get("ilo_protocol") or "").lower() == "bmc":
+        from app import bmc_collector
+        return bmc_collector.esplora(server["ilo_ip"], server.get("ilo_user")
+                                     or "admin", password, path)
 
     endpoints = [
         "/",

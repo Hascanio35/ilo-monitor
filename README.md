@@ -55,6 +55,10 @@ Le schermate usano server e dati di esempio.
   iLO, il pannello prova il Redfish standard: stato, accensione e
   riavvio, LED, registri eventi e, se la scheda li legge, sensori.
   Vedi [Schede di gestione di altri produttori](#schede-di-gestione-di-altri-produttori).
+- **Server senza scheda di gestione.** Si aggiungono come "solo
+  Windows": i dati arrivano dallo script per Windows e il pannello li
+  accende con il Wake-on-LAN. Vedi
+  [Server senza scheda di gestione](#server-senza-scheda-di-gestione).
 - **Inventario e stato.** Processori, moduli di memoria, dischi
   fisici e volumi, controller, interfacce di rete, alimentatori,
   sensori termici, ventole, consumi.
@@ -201,6 +205,30 @@ l'albero Redfish su file (senza password, account e certificati):
 python3 -m app.redfish_collector --dump <id del server>
 ```
 
+## Server senza scheda di gestione
+
+Per i server che non hanno iLO, iRMC o altra scheda di gestione (per
+esempio un tower entry level), in **Aggiungi server** si sceglie il tipo
+**Solo Windows** e si indicano nome e indirizzo IP del server.
+
+- Tutti i dati arrivano dallo [script per Windows](#script-per-windows-dischi-e-smart):
+  dischi e SMART, temperature, ventole, carico e inventario, comprese le
+  schede di rete.
+- Se lo script non invia per 15 minuti il server risulta spento o non
+  raggiungibile.
+- **Accendi (Wake-on-LAN)** invia il magic packet (UDP, porte 9 e 7) al
+  broadcast della rete del server e a 255.255.255.255. Il MAC lo manda
+  lo script (la scheda che raggiunge il pannello) oppure si inserisce a
+  mano in Modifica server.
+- Spegnimento e riavvio si fanno da Windows; niente console e niente LED.
+
+Perche' l'accensione funzioni servono il Wake-on-LAN attivo nel BIOS,
+*Wake on Magic Packet* attivo nella scheda di rete in Windows (il
+pannello avvisa se e' spento) e il server sulla stessa rete del
+pannello: i router di norma non inoltrano i broadcast. Con Docker il
+contenitore `api` deve usare la rete dell'host (`network_mode: host`),
+altrimenti il pacchetto non esce dalla rete interna di Docker.
+
 ## Script per Windows: dischi e SMART
 
 L'iLO non vede tutto: gli iLO 2 non conoscono gli NVMe su scheda
@@ -255,17 +283,18 @@ nuovo lo script se ne crea una nuova e quella vecchia smette di
 funzionare. Il server Windows deve raggiungere il pannello
 all'indirizzo usato dal browser per scaricarlo.
 
-### Sensori e inventario (server con scheda di gestione generica)
+### Sensori e inventario (server BMC e solo Windows)
 
-Per i server registrati come "BMC" lo script scaricato dal pannello fa
-di piu':
+Per i server registrati come "BMC" o "solo Windows" lo script scaricato
+dal pannello fa di piu':
 
 - **ogni 5 minuti** invia temperature di CPU, scheda madre, memoria e
   scheda video, giri delle ventole, carico di CPU e memoria e potenza
   della CPU;
 - **ogni ora**, con i dischi, invia l'inventario: modello della scheda
   madre, numero di serie, BIOS, sistema operativo, ultimo avvio,
-  processori e moduli di memoria.
+  processori, moduli di memoria e schede di rete (MAC, indirizzo, rete,
+  stato del Wake on Magic Packet).
 
 I sensori si leggono con la libreria di
 [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor):

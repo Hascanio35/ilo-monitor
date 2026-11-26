@@ -649,6 +649,33 @@ function Leggi-Inventario {
             mhz = $mhz; tipo = $tipo; produttore = "$($_.Manufacturer)".Trim()
             codice = "$($_.PartNumber)".Trim() })
     })
+    # Schede di rete: quella che porta al pannello serve per il
+    # Wake-on-LAN (MAC e rete su cui mandare il pacchetto di accensione).
+    $rete = @()
+    try {
+        $versoPannello = $null
+        try {
+            $nomePannello = ([Uri]$Pannello).Host
+            $ipPannello = [Net.Dns]::GetHostAddresses($nomePannello) |
+                Where-Object { $_.AddressFamily -eq 'InterNetwork' } | Select-Object -First 1
+            if ($ipPannello) {
+                $versoPannello = (Find-NetRoute -RemoteIPAddress $ipPannello.IPAddressToString -ErrorAction Stop |
+                    Select-Object -First 1).InterfaceIndex
+            }
+        } catch { }
+        foreach ($a in @(Get-NetAdapter -Physical -ErrorAction Stop | Where-Object { $_.Status -eq 'Up' })) {
+            $ip = Get-NetIPAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+                Where-Object { $_.IPAddress -notlike '169.254.*' } | Select-Object -First 1
+            $wol = $null
+            try { $wol = "$((Get-NetAdapterPowerManagement -Name $a.Name -ErrorAction Stop).WakeOnMagicPacket)" } catch { }
+            $rete += New-Object PSObject -Property ([ordered]@{
+                nome = "$($a.Name)"; descrizione = "$($a.InterfaceDescription)"
+                mac = "$($a.MacAddress)"; ip = $(if ($ip) { "$($ip.IPAddress)" } else { $null })
+                prefisso = $(if ($ip) { [int]$ip.PrefixLength } else { $null })
+                principale = ($a.ifIndex -eq $versoPannello); wol = $wol })
+        }
+    } catch { }
+
     return New-Object PSObject -Property ([ordered]@{
         hostname   = "$($cs.DNSHostName)"
         produttore = $produttore
@@ -659,6 +686,7 @@ function Leggi-Inventario {
         avvio      = $os.LastBootUpTime.ToUniversalTime().ToString('s')
         processori = $processori
         memoria    = $memoria
+        rete       = @($rete)
     })
 }
 
@@ -776,6 +804,10 @@ if ($Mostra) {
                 Write-Host ("Sistema: {0} {1} - {2} - BIOS {3}" -f $inventario.produttore, $inventario.modello, $inventario.so, $inventario.bios)
                 $inventario.processori | ForEach-Object { Write-Host ("CPU: {0} ({1} core, {2} thread)" -f $_.modello, $_.core, $_.thread) }
                 Write-Host ("Memoria: {0} moduli, {1} GB" -f @($inventario.memoria).Count, [math]::Round((@($inventario.memoria) | Measure-Object mib -Sum).Sum / 1024))
+                foreach ($r in @($inventario.rete)) {
+                    $segno = if ($r.principale) { ' <- verso il pannello' } else { '' }
+                    Write-Host ("Rete: {0} {1} {2}/{3} - Wake on Magic Packet: {4}{5}" -f $r.nome, $r.mac, $r.ip, $r.prefisso, $(if ($r.wol) { $r.wol } else { 'n/d' }), $segno)
+                }
             }
             if (-not $sensori.pawnio) {
                 Write-Host "Senza PawnIO mancano CPU e scheda madre: installalo con  winget install namazso.PawnIO" -ForegroundColor Yellow

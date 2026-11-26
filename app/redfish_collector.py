@@ -622,6 +622,10 @@ def collect_server(server, db, verbose=True, full=False):
         from app import bmc_collector
         return bmc_collector.collect_server(
             server, db, verbose=verbose, full=full)
+    # Server senza scheda di gestione: i dati li manda lo script Windows.
+    if str(server.get("ilo_protocol") or "").lower() == "agent":
+        from app import agente
+        return agente.collect_server(server, db, verbose=verbose, full=full)
 
     server_id = server["id"]
     name = server["name"]
@@ -2037,6 +2041,10 @@ def dump_server(server_id, path):
         server = rows[0]
     finally:
         db.close()
+
+    if str(server.get("ilo_protocol") or "").lower() == "agent":
+        print("Server senza scheda di gestione: non c'e' nulla da interrogare.")
+        return 1
 
     password = decrypt(server.get("ilo_password_enc"))
     if not password:

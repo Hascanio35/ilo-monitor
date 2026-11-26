@@ -496,6 +496,9 @@ class ServerIn(BaseModel):
     server_group: Optional[str] = None
     notes: Optional[str] = None
     enabled: bool = True
+    # "agent": server senza scheda di gestione, dati dallo script Windows.
+    tipo: Optional[str] = None
+    wol_mac: Optional[str] = Field(default=None, max_length=30)
 
 
 class ServerUpdate(BaseModel):
@@ -506,6 +509,7 @@ class ServerUpdate(BaseModel):
     server_group: Optional[str] = None
     notes: Optional[str] = None
     enabled: Optional[bool] = None
+    wol_mac: Optional[str] = None
 
 
 class TestIn(BaseModel):
@@ -982,8 +986,52 @@ def metrics(server_id: int, hours: int = Query(24, ge=1, le=8760)):
 # ================================================================
 
 
+def _crea_server_agente(payload):
+    """Server senza scheda di gestione: niente da verificare, i dati
+    arriveranno dallo script Windows."""
+    from app import agente
+    name = (payload.name or "").strip()[:150]
+    if not name:
+        raise HTTPException(400, "Indica il nome del server")
+    mac = None
+    if (payload.wol_mac or "").strip():
+        mac = agente.normalizza_mac(payload.wol_mac)
+        if not mac:
+            raise HTTPException(400, "Indirizzo MAC non valido (es. 00:1B:21:AA:BB:CC)")
+    con = db()
+    try:
+        with con.cursor() as cur:
+            if one(cur, "SELECT id FROM servers WHERE ilo_ip=%s", (payload.ilo_ip,)):
+                raise HTTPException(
+                    409, f"L'indirizzo {payload.ilo_ip} è già associato a un "
+                         f"server in elenco")
+            cur.execute(
+                """
+                INSERT INTO servers
+                (name, ilo_ip, ilo_user, ilo_password_enc, ilo_version,
+                 server_group, notes, enabled, ilo_protocol, wol_mac, wol_auto)
+                VALUES (%s,%s,'',NULL,'Solo Windows',%s,%s,%s,'agent',%s,%s)
+                """,
+                (name, payload.ilo_ip.strip(), payload.server_group,
+                 payload.notes, 1 if payload.enabled else 0, mac,
+                 0 if mac else 1),
+            )
+            server_id = cur.lastrowid
+            cur.execute("INSERT IGNORE INTO server_alerts (server_id) VALUES (%s)",
+                        (server_id,))
+    finally:
+        con.close()
+    return {
+        "ok": True, "id": server_id, "name": name, "identity": {},
+        "tipo": "agent",
+        "message": f"{name} aggiunto. Ora installa lo script per Windows.",
+    }
+
+
 @app.post("/api/servers", status_code=201)
 def create_server(payload: ServerIn, background: BackgroundTasks):
+    if (payload.tipo or "").lower() == "agent":
+        return _crea_server_agente(payload)
     if not payload.ilo_password:
         raise HTTPException(400, "La password iLO è obbligatoria")
 
@@ -1112,7 +1160,8 @@ def update_server(server_id: int, payload: ServerUpdate):
             password_enc = current["ilo_password_enc"]
             if payload.ilo_password:
                 password_enc = encrypt(payload.ilo_password)
-            credentials_changed = bool(
+            agente_srv = current.get("ilo_protocol") == "agent"
+            credentials_changed = (not agente_srv) and bool(
                 payload.ilo_password
                 or (payload.ilo_ip and payload.ilo_ip != current["ilo_ip"])
                 or (payload.ilo_user and payload.ilo_user != current["ilo_user"])
@@ -1167,6 +1216,19 @@ def update_server(server_id: int, payload: ServerUpdate):
             if payload.enabled is not None:
                 sets.append("enabled=%s")
                 args.append(1 if payload.enabled else 0)
+            if agente_srv and payload.wol_mac is not None:
+                # Vuoto: il MAC torna a prenderlo lo script da Windows.
+                from app import agente
+                mac = agente.normalizza_mac(payload.wol_mac)
+                if payload.wol_mac.strip() and not mac:
+                    raise HTTPException(
+                        400, "Indirizzo MAC non valido (es. 00:1B:21:AA:BB:CC)")
+                if mac:
+                    sets.append("wol_mac=%s")
+                    args.append(mac)
+                    sets.append("wol_auto=0")
+                else:
+                    sets.append("wol_auto=1")
 
             if sets:
                 args.append(server_id)
@@ -1339,6 +1401,8 @@ def power_action(server_id: int, payload: PowerIn):
                 return _power_ribcl(cur, riga, payload.action.lower(), action)
             if riga and riga.get("ilo_protocol") == "bmc":
                 return _power_bmc(cur, riga, payload.action.lower())
+            if riga and riga.get("ilo_protocol") == "agent":
+                return _power_wol(cur, riga, payload.action.lower())
             row, rf = _open_session(cur, server_id)
             try:
                 rf.post(
@@ -1381,6 +1445,31 @@ def _power_ribcl(cur, riga, azione, nome_azione):
     }
 
 
+def _power_wol(cur, riga, azione):
+    """Senza scheda di gestione si puo' solo accendere, col Wake-on-LAN."""
+    from app import agente
+    if azione != "on":
+        raise HTTPException(
+            400, "Senza scheda di gestione il pannello può solo accendere il "
+                 "server (Wake-on-LAN): spegnimento e riavvio si fanno da Windows.")
+    if not riga.get("wol_mac"):
+        raise HTTPException(
+            400, "MAC per il Wake-on-LAN sconosciuto: lo invia lo script "
+                 "Windows, oppure inseriscilo in Modifica server.")
+    try:
+        mac, inviati = agente.invia_wol(
+            riga["wol_mac"], riga.get("ilo_ip"), riga.get("wol_broadcast"))
+    except Exception as exc:
+        raise HTTPException(502, f"Invio del Wake-on-LAN non riuscito: {exc}")
+    return {
+        "ok": True,
+        "message": f"Wake-on-LAN inviato a {riga['name']} ({mac}) "
+                   f"su {', '.join(sorted({x.split(':')[0] for x in inviati}))}. "
+                   f"Se il server si accende, i dati arrivano in pochi minuti.",
+        "power_state": riga.get("power_state"),
+    }
+
+
 def _power_bmc(cur, riga, azione):
     from app import bmc_collector
     try:
@@ -1415,6 +1504,9 @@ def toggle_led(server_id: int):
                 cur.execute("UPDATE servers SET indicator_led=%s WHERE id=%s",
                             (target, server_id))
                 return {"ok": True, "indicator_led": target}
+            if riga and riga.get("ilo_protocol") == "agent":
+                raise HTTPException(
+                    400, "Senza scheda di gestione non c'è un LED da comandare")
             if riga and riga.get("ilo_protocol") == "bmc":
                 from app import bmc_collector
                 try:
@@ -1497,7 +1589,8 @@ def agent_script(server_id: int, request: Request):
                   # I sensori li chiediamo solo dove nessun altro li legge:
                   # le schede di gestione generiche (gli iLO li leggono gia').
                   .replace("{{SENSORI}}",
-                           "1" if row.get("ilo_protocol") == "bmc" else "0")
+                           "1" if row.get("ilo_protocol") in ("bmc", "agent")
+                           else "0")
                   .replace("{{DATA}}", datetime.now().strftime("%d/%m/%Y %H:%M")))
     # BOM UTF-8 e fine riga Windows: PowerShell 5 legge cosi' senza
     # sorprese anche gli accenti nei nomi dei server.
@@ -1876,6 +1969,37 @@ def _salva_inventario(cur, server_id, inv, adesso):
         )
 
 
+def _salva_rete_wol(cur, server_id, inv):
+    """Dal Windows arriva l'elenco delle schede di rete: quella usata per
+    raggiungere il pannello da' MAC e rete per il Wake-on-LAN."""
+    from app import agente
+    schede = inv.get("rete") or []
+    if isinstance(schede, dict):
+        schede = [schede]
+    schede = [x for x in schede if isinstance(x, dict) and agente.normalizza_mac(x.get("mac"))]
+    if not schede:
+        return
+    scelta = next((x for x in schede if x.get("principale")), schede[0])
+    mac = agente.normalizza_mac(scelta.get("mac"))
+    bcast = agente.broadcast_rete(scelta.get("ip"), scelta.get("prefisso"))
+    wol = str(scelta.get("wol") or "").strip().lower()
+    nota = None
+    if wol in ("disabled", "false", "0"):
+        nota = (f"nella scheda {scelta.get('nome') or ''} di Windows "
+                f"'Wake on Magic Packet' è disattivato")
+    elif wol in ("unsupported", ""):
+        nota = "Windows non dice se la scheda di rete accetta il Wake-on-LAN"
+    cur.execute(
+        """
+        UPDATE servers SET
+            wol_mac=IF(wol_auto=1 OR wol_mac IS NULL, %s, wol_mac),
+            wol_broadcast=%s, wol_note=%s
+        WHERE id=%s
+        """,
+        (mac, bcast, nota, server_id),
+    )
+
+
 @app.post("/api/agent/drives")
 async def agent_drives(request: Request):
     autorizzazione = request.headers.get("authorization") or ""
@@ -1959,7 +2083,7 @@ async def agent_drives(request: Request):
             n_sensori = 0
             nota = None
             sensori = dati.get("sensori")
-            if row.get("ilo_protocol") == "bmc":
+            if row.get("ilo_protocol") in ("bmc", "agent"):
                 if isinstance(sensori, dict):
                     n_sensori = _salva_sensori(cur, server_id, sensori, adesso)
                     if not sensori.get("pawnio"):
@@ -1971,6 +2095,15 @@ async def agent_drives(request: Request):
                     nota = str(dati.get("errore_sensori"))[:250]
                 if isinstance(dati.get("inventario"), dict):
                     _salva_inventario(cur, server_id, dati["inventario"], adesso)
+                    if row.get("ilo_protocol") == "agent":
+                        _salva_rete_wol(cur, server_id, dati["inventario"])
+            if row.get("ilo_protocol") == "agent":
+                # Lo script che invia e' l'unico segno di vita del server.
+                cur.execute(
+                    "UPDATE servers SET last_seen=%s, power_state='On', "
+                    "last_collect_status='OK', last_collect_at=%s, "
+                    "last_error=NULL WHERE id=%s",
+                    (adesso, adesso, server_id))
             cur.execute(
                 "UPDATE servers SET agent_last_at=%s, agent_host=%s, "
                 "agent_sensors_note=%s WHERE id=%s",

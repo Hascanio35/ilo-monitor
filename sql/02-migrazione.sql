@@ -105,7 +105,8 @@ CALL add_column_if_missing('servers', 'ams_status',
 CALL add_column_if_missing('servers', 'host_os',
     '`host_os` VARCHAR(255) NULL');
 -- NULL o 'redfish' per iLO 4/5/6, 'ribcl' per iLO 2 e 3, 'bmc' per
--- schede di gestione Redfish di altri produttori (es. ASUS ASMB10).
+-- schede di gestione Redfish di altri produttori (es. ASUS ASMB10),
+-- 'agent' per i server senza scheda di gestione (solo script Windows).
 CALL add_column_if_missing('servers', 'ilo_protocol',
     '`ilo_protocol` VARCHAR(10) NULL');
 -- Dischi inviati dallo script per Windows (sorgente 'os'), con i
@@ -128,6 +129,16 @@ CALL add_column_if_missing('servers', 'agent_host',
 -- invece della percentuale degli iLO.
 CALL add_column_if_missing('fans', 'speed_rpm',
     '`speed_rpm` INT NULL');
+-- Server senza scheda di gestione ('agent'): accensione con Wake-on-LAN.
+-- wol_auto=1: MAC e rete li manda lo script Windows; 0: MAC inserito a mano.
+CALL add_column_if_missing('servers', 'wol_mac',
+    '`wol_mac` VARCHAR(17) NULL');
+CALL add_column_if_missing('servers', 'wol_auto',
+    '`wol_auto` TINYINT(1) NOT NULL DEFAULT 1');
+CALL add_column_if_missing('servers', 'wol_broadcast',
+    '`wol_broadcast` VARCHAR(45) NULL');
+CALL add_column_if_missing('servers', 'wol_note',
+    '`wol_note` VARCHAR(255) NULL');
 -- Esito della lettura dei sensori da parte dello script Windows.
 CALL add_column_if_missing('servers', 'agent_sensors_note',
     '`agent_sensors_note` VARCHAR(255) NULL');
